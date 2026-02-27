@@ -225,7 +225,25 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_scan: scan %s failed: %s", scan_id, exc)
         scan.status = ScanStatus.failed
-        scan.error_message = str(exc)
+        # Produce a user-friendly error for common failures.
+        msg = str(exc)
+        if "401" in msg or "Unauthorized" in msg:
+            scan.error_message = (
+                "Authentication failed — the access token is invalid or expired. "
+                "Please delete this connection and re-add it with a valid token."
+            )
+        elif "403" in msg or "Forbidden" in msg:
+            scan.error_message = (
+                "Access denied — the token lacks the required scopes. "
+                "Ensure it has read access to the organization/group and its repositories."
+            )
+        elif "404" in msg or "Not Found" in msg:
+            scan.error_message = (
+                f"Organization or group not found. Verify that '{connection.org_or_group}' "
+                "is spelled correctly and the token has access to it."
+            )
+        else:
+            scan.error_message = msg
 
     finally:
         await session.commit()
