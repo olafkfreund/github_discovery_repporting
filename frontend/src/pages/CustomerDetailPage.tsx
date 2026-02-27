@@ -60,10 +60,11 @@ interface AddConnectionFormProps {
 }
 
 function AddConnectionForm({ customerId, onCreated, onCancel }: AddConnectionFormProps) {
-  const [form, setForm] = useState<ConnectionCreatePayload>({
-    platform: 'github',
+  const [form, setForm] = useState({
+    platform: 'github' as ConnectionCreatePayload['platform'],
     display_name: '',
     org_or_group: '',
+    auth_type: 'token' as ConnectionCreatePayload['auth_type'],
     token: '',
     base_url: '',
   })
@@ -83,7 +84,8 @@ function AddConnectionForm({ customerId, onCreated, onCancel }: AddConnectionFor
         platform: form.platform,
         display_name: form.display_name.trim(),
         org_or_group: form.org_or_group.trim(),
-        token: form.token.trim(),
+        auth_type: form.auth_type,
+        credentials: form.token.trim(),
       }
       if (form.base_url?.trim()) payload.base_url = form.base_url.trim()
       const created = await api.addConnection(customerId, payload)

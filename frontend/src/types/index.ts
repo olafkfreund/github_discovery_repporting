@@ -87,7 +87,8 @@ export interface ConnectionCreatePayload {
   platform: 'github' | 'gitlab' | 'azure_devops'
   display_name: string
   org_or_group: string
-  token: string
+  auth_type: 'token' | 'oauth' | 'pat'
+  credentials: string
   base_url?: string
 }
 
