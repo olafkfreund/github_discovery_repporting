@@ -1,0 +1,300 @@
+{# ======================================================================
+   Benchmark Comparisons Section
+   Variables expected in context:
+     benchmark_comparisons  list[dict]
+       Each dict:
+         framework        str   "DORA" | "OpenSSF" | "SLSA" | "CIS"
+         level_or_status  str
+         summary          str
+         details          dict  (framework-specific sub-data)
+   ====================================================================== #}
+
+<div class="section page-break-before">
+    <h1>Benchmark Comparisons</h1>
+    <p style="margin-bottom: 6mm;">
+        This section aligns the scan results against four widely-adopted industry
+        frameworks to provide external context for the organisation's DevOps posture.
+    </p>
+
+    {# Helper macro: look up a specific framework from the list --------- #}
+    {% macro find_framework(name) %}
+        {%- for b in benchmark_comparisons if b.framework | upper == name | upper %}
+            {{ b }}
+        {%- endfor -%}
+    {% endmacro %}
+
+    {# ------------------------------------------------------------------ #}
+    {# DORA Metrics                                                        #}
+    {# ------------------------------------------------------------------ #}
+    {% set dora = namespace(data=none) %}
+    {% for b in benchmark_comparisons %}
+        {% if b.framework | upper == "DORA" %}
+            {% set dora.data = b %}
+        {% endif %}
+    {% endfor %}
+
+    <div class="avoid-break" style="margin-bottom: 8mm;">
+        <h2>DORA Metrics</h2>
+        {% if dora.data %}
+        <div class="card card-primary" style="margin-bottom: 4mm;">
+            <strong>Achieved Level:</strong>
+            <span class="badge badge-primary" style="margin-left: 2mm; font-size: 9pt;">
+                {{ dora.data.level_or_status | title }}
+            </span>
+            <p style="margin-top: 2mm; font-size: 9pt;">{{ dora.data.summary }}</p>
+        </div>
+
+        {% if dora.data.details %}
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30%;">DORA Metric</th>
+                    <th style="width: 45%;">Description / Value</th>
+                    <th style="width: 25%;">Performance Band</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for metric, value in dora.data.details.items() %}
+                <tr>
+                    <td style="font-weight: 600;">{{ metric | replace("_", " ") | title }}</td>
+                    <td style="font-size: 9pt;">
+                        {% if value is mapping %}
+                            {{ value.get("description", value | string) }}
+                        {% else %}
+                            {{ value }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if value is mapping %}
+                            {% set band = value.get("band", value.get("level", "")) | lower %}
+                            {% if band in ["elite", "high"] %}
+                                <span class="badge badge-success">{{ band | title }}</span>
+                            {% elif band == "medium" %}
+                                <span class="badge badge-warning">{{ band | title }}</span>
+                            {% elif band in ["low", "poor"] %}
+                                <span class="badge badge-danger">{{ band | title }}</span>
+                            {% else %}
+                                <span class="badge badge-neutral">{{ band | title if band else "—" }}</span>
+                            {% endif %}
+                        {% else %}
+                            &mdash;
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        {% else %}
+        <p class="text-muted">DORA benchmark data not available for this scan.</p>
+        {% endif %}
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# OpenSSF Scorecard                                                   #}
+    {# ------------------------------------------------------------------ #}
+    {% set openssf = namespace(data=none) %}
+    {% for b in benchmark_comparisons %}
+        {% if "openssf" in b.framework | lower %}
+            {% set openssf.data = b %}
+        {% endif %}
+    {% endfor %}
+
+    <div class="avoid-break" style="margin-bottom: 8mm;">
+        <h2>OpenSSF Scorecard Alignment</h2>
+        {% if openssf.data %}
+        <div class="card card-primary" style="margin-bottom: 4mm;">
+            <strong>Overall Status:</strong>
+            <span class="badge badge-primary" style="margin-left: 2mm; font-size: 9pt;">
+                {{ openssf.data.level_or_status | title }}
+            </span>
+            <p style="margin-top: 2mm; font-size: 9pt;">{{ openssf.data.summary }}</p>
+        </div>
+
+        {% if openssf.data.details %}
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 40%;">Scorecard Category</th>
+                    <th style="width: 20%;">Status</th>
+                    <th style="width: 40%;">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category, value in openssf.data.details.items() %}
+                <tr>
+                    <td style="font-weight: 500;">{{ category | replace("_", " ") | title }}</td>
+                    <td>
+                        {% if value is mapping %}
+                            {% set status = value.get("status", value.get("result", "")) | lower %}
+                        {% else %}
+                            {% set status = value | lower %}
+                        {% endif %}
+                        {% if status in ["pass", "passed", "true", "yes"] %}
+                            <span class="badge badge-passed">Pass</span>
+                        {% elif status in ["fail", "failed", "false", "no"] %}
+                            <span class="badge badge-failed">Fail</span>
+                        {% elif status in ["partial", "warning"] %}
+                            <span class="badge badge-warning-status">Partial</span>
+                        {% else %}
+                            <span class="badge badge-neutral">{{ status | title if status else "—" }}</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 8.5pt; color: var(--muted);">
+                        {% if value is mapping %}
+                            {{ value.get("notes", value.get("detail", "")) | truncate(80) }}
+                        {% else %}
+                            &mdash;
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        {% else %}
+        <p class="text-muted">OpenSSF Scorecard data not available for this scan.</p>
+        {% endif %}
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# SLSA Level                                                          #}
+    {# ------------------------------------------------------------------ #}
+    {% set slsa = namespace(data=none) %}
+    {% for b in benchmark_comparisons %}
+        {% if "slsa" in b.framework | lower %}
+            {% set slsa.data = b %}
+        {% endif %}
+    {% endfor %}
+
+    <div class="avoid-break" style="margin-bottom: 8mm;">
+        <h2>SLSA Supply-Chain Security</h2>
+        {% if slsa.data %}
+        <div class="card card-primary" style="margin-bottom: 4mm;">
+            <strong>Achieved Level:</strong>
+            <span class="badge badge-primary" style="margin-left: 2mm; font-size: 10pt; padding: 1mm 3mm;">
+                {{ slsa.data.level_or_status }}
+            </span>
+            <p style="margin-top: 2mm; font-size: 9pt;">{{ slsa.data.summary }}</p>
+        </div>
+
+        {% if slsa.data.details %}
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 40%;">SLSA Requirement</th>
+                    <th style="width: 15%;">Met?</th>
+                    <th style="width: 45%;">Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req, value in slsa.data.details.items() %}
+                <tr>
+                    <td style="font-weight: 500;">{{ req | replace("_", " ") | title }}</td>
+                    <td>
+                        {% if value is mapping %}
+                            {% set met = value.get("met", value.get("status", "")) | lower %}
+                        {% else %}
+                            {% set met = value | string | lower %}
+                        {% endif %}
+                        {% if met in ["true", "yes", "met", "pass", "passed"] %}
+                            <span class="badge badge-passed">Yes</span>
+                        {% elif met in ["false", "no", "not_met", "fail", "failed"] %}
+                            <span class="badge badge-failed">No</span>
+                        {% else %}
+                            <span class="badge badge-neutral">{{ met | title if met else "—" }}</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 8.5pt; color: var(--muted);">
+                        {% if value is mapping %}
+                            {{ value.get("detail", value.get("description", "")) | truncate(90) }}
+                        {% else %}
+                            &mdash;
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        {% else %}
+        <p class="text-muted">SLSA benchmark data not available for this scan.</p>
+        {% endif %}
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# CIS Compliance                                                       #}
+    {# ------------------------------------------------------------------ #}
+    {% set cis = namespace(data=none) %}
+    {% for b in benchmark_comparisons %}
+        {% if "cis" in b.framework | lower %}
+            {% set cis.data = b %}
+        {% endif %}
+    {% endfor %}
+
+    <div class="avoid-break" style="margin-bottom: 8mm;">
+        <h2>CIS Controls Compliance</h2>
+        {% if cis.data %}
+        <div class="card card-primary" style="margin-bottom: 4mm;">
+            <strong>Overall Status:</strong>
+            <span class="badge badge-primary" style="margin-left: 2mm; font-size: 9pt;">
+                {{ cis.data.level_or_status | title }}
+            </span>
+            <p style="margin-top: 2mm; font-size: 9pt;">{{ cis.data.summary }}</p>
+        </div>
+
+        {% if cis.data.details %}
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 40%;">CIS Control Area</th>
+                    <th style="width: 15%;">Status</th>
+                    <th style="width: 15%;">Score</th>
+                    <th style="width: 30%;">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for area, value in cis.data.details.items() %}
+                <tr>
+                    <td style="font-weight: 500;">{{ area | replace("_", " ") | title }}</td>
+                    <td>
+                        {% if value is mapping %}
+                            {% set status = value.get("status", value.get("compliance", "")) | lower %}
+                        {% else %}
+                            {% set status = value | string | lower %}
+                        {% endif %}
+                        {% if status in ["compliant", "pass", "passed", "yes", "full"] %}
+                            <span class="badge badge-passed">Compliant</span>
+                        {% elif status in ["partial", "warning"] %}
+                            <span class="badge badge-warning-status">Partial</span>
+                        {% elif status in ["non-compliant", "fail", "failed", "no"] %}
+                            <span class="badge badge-failed">Non-Compliant</span>
+                        {% else %}
+                            <span class="badge badge-neutral">{{ status | title if status else "—" }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="numeric" style="font-weight: 600;">
+                        {% if value is mapping and value.get("score") is not none %}
+                            {{ "%.0f"|format(value.get("score") | float) }}%
+                        {% else %}
+                            &mdash;
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 8.5pt; color: var(--muted);">
+                        {% if value is mapping %}
+                            {{ value.get("notes", value.get("detail", "")) | truncate(60) }}
+                        {% else %}
+                            &mdash;
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        {% else %}
+        <p class="text-muted">CIS Controls data not available for this scan.</p>
+        {% endif %}
+    </div>
+
+</div>

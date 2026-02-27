@@ -1,0 +1,218 @@
+{# ======================================================================
+   Appendix Section
+   Variables expected in context:
+     all_findings  list[dict]  Full list of check results:
+       check_id    str
+       check_name  str
+       category    str
+       severity    str
+       status      str
+       detail      str
+   ====================================================================== #}
+
+<div class="section page-break-before">
+    <h1>Appendix</h1>
+
+    {# ------------------------------------------------------------------ #}
+    {# A. Complete findings table                                          #}
+    {# ------------------------------------------------------------------ #}
+    <h2>A. Complete Check Results</h2>
+    <p style="margin-bottom: 4mm; font-size: 9pt;" class="text-muted">
+        Every check evaluated during the scan is listed below.  Results are ordered
+        by category then severity.
+    </p>
+
+    {% if all_findings %}
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 12%;">Check ID</th>
+                <th style="width: 28%;">Check Name</th>
+                <th style="width: 15%;">Category</th>
+                <th style="width: 10%;">Severity</th>
+                <th style="width: 10%;">Status</th>
+                <th style="width: 25%;">Detail</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in all_findings %}
+            <tr>
+                <td>
+                    <code style="font-family: var(--font-mono); font-size: 7.5pt;">
+                        {{ f.check_id }}
+                    </code>
+                </td>
+                <td style="font-size: 8.5pt;">{{ f.check_name }}</td>
+                <td>
+                    <span class="badge badge-neutral">
+                        {{ f.category | replace("_", " ") | title }}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge badge-{{ f.severity | lower }}">
+                        {{ f.severity | title }}
+                    </span>
+                </td>
+                <td>
+                    {% set s = f.status | lower %}
+                    {% if s == "passed" %}
+                        <span class="badge badge-passed">Passed</span>
+                    {% elif s == "failed" %}
+                        <span class="badge badge-failed">Failed</span>
+                    {% elif s == "warning" %}
+                        <span class="badge badge-warning-status">Warning</span>
+                    {% elif s == "not_applicable" %}
+                        <span class="badge badge-not-applicable">N/A</span>
+                    {% else %}
+                        <span class="badge badge-error">{{ f.status | title }}</span>
+                    {% endif %}
+                </td>
+                <td style="font-size: 8pt; color: var(--muted);">
+                    {{ f.detail | truncate(100) if f.detail else "&mdash;" }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No check results are available for this scan.</p>
+    {% endif %}
+
+    {# ------------------------------------------------------------------ #}
+    {# B. Methodology                                                      #}
+    {# ------------------------------------------------------------------ #}
+    <div class="section avoid-break" style="margin-top: 10mm;">
+        <h2>B. Methodology</h2>
+        <p>
+            The DevOps Discovery assessment uses an automated, agent-based scanner
+            that collects configuration and activity data directly from the source
+            control platform via its public API.  No code is executed and no
+            repository contents are read; only metadata and configuration artefacts
+            are inspected.
+        </p>
+        <p>
+            Checks are grouped into five categories — <strong>Security</strong>,
+            <strong>CI/CD</strong>, <strong>Code Quality</strong>,
+            <strong>Collaboration</strong>, and <strong>Governance</strong> — each
+            carrying a category-level weight.  Individual checks also carry a
+            severity weight that determines their contribution to the category score.
+        </p>
+        <p>
+            The overall score is a weighted average of all category percentages,
+            where each category's contribution is proportional to its weight and the
+            fraction of applicable checks.  Checks marked <em>Not Applicable</em>
+            are excluded from both the numerator and denominator so they cannot
+            artificially deflate the result.
+        </p>
+        <p>
+            Narrative content, risk highlights, and recommendations are generated
+            by a large language model (Anthropic Claude) using the structured scan
+            output as context.  All AI-generated text is clearly marked and should
+            be reviewed by a qualified practitioner before acting upon it.
+        </p>
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# C. Glossary                                                         #}
+    {# ------------------------------------------------------------------ #}
+    <div class="section avoid-break" style="margin-top: 10mm;">
+        <h2>C. Glossary</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 20%;">Term</th>
+                    <th>Definition</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>DORA</strong></td>
+                    <td>
+                        DevOps Research and Assessment — a research programme that
+                        identified four key metrics (Deployment Frequency, Lead Time
+                        for Changes, Change Failure Rate, Time to Restore Service)
+                        as the strongest predictors of software delivery performance
+                        and organisational outcomes.
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>OpenSSF</strong></td>
+                    <td>
+                        Open Source Security Foundation — an initiative that hosts
+                        the Scorecard project, which evaluates open-source repositories
+                        against a set of security best-practice checks such as branch
+                        protection, dependency pinning, and signed releases.
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>SLSA</strong></td>
+                    <td>
+                        Supply-chain Levels for Software Artifacts — a security
+                        framework defining a four-level maturity model for software
+                        build and provenance requirements, aimed at reducing supply-chain
+                        compromise risks.  Each level introduces progressively stricter
+                        controls around build integrity and provenance attestation.
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>CIS Controls</strong></td>
+                    <td>
+                        Centre for Internet Security Critical Security Controls — a
+                        prioritised set of safeguards to mitigate the most prevalent
+                        cyber-attacks against systems and networks.  CIS Controls v8
+                        organises 18 control groups, and this report aligns relevant
+                        DevOps-facing controls to the scan results.
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Branch Protection</strong></td>
+                    <td>
+                        A repository setting that enforces rules on commits made to
+                        important branches (e.g. requiring pull-request reviews, passing
+                        status checks, or signed commits before merging).
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>SBOM</strong></td>
+                    <td>
+                        Software Bill of Materials — a formal, machine-readable inventory
+                        of the components, libraries, and modules that compose a software
+                        artefact, used for vulnerability tracking and licence compliance.
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Deployment Frequency</strong></td>
+                    <td>
+                        One of the four DORA metrics, measuring how often an organisation
+                        deploys code to production.  Elite performers deploy multiple times
+                        per day; low performers deploy less than once per six months.
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Lead Time for Changes</strong></td>
+                    <td>
+                        One of the four DORA metrics, measuring the time from committing
+                        code to running it successfully in production.
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Change Failure Rate</strong></td>
+                    <td>
+                        One of the four DORA metrics, measuring the percentage of
+                        deployments that cause a failure in production (requiring a
+                        hotfix, rollback, or other remediation).
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>MTTR</strong></td>
+                    <td>
+                        Mean Time to Restore — one of the four DORA metrics (also called
+                        "Time to Restore Service"), measuring how long it takes to recover
+                        from a failure in production.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>

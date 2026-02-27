@@ -1,0 +1,115 @@
+{# ======================================================================
+   Executive Summary Section
+   Variables expected in context:
+     overall_score      float   0–100
+     dora_level         str     e.g. "high", "medium", "low", "elite"
+     category_scores    dict    {category_name: float_percentage}
+     executive_summary  str     AI-generated prose (may contain newlines)
+     risk_highlights    list[str]
+     overall_maturity   str     AI-generated maturity assessment
+   ====================================================================== #}
+
+<div class="section avoid-break">
+    <h1>Executive Summary</h1>
+
+    {# ------------------------------------------------------------------ #}
+    {# Score hero block                                                    #}
+    {# ------------------------------------------------------------------ #}
+    {% set score = overall_score | float %}
+    {% if score >= 75 %}
+        {% set score_class = "high" %}
+    {% elif score >= 50 %}
+        {% set score_class = "medium" %}
+    {% else %}
+        {% set score_class = "low" %}
+    {% endif %}
+
+    <div class="score-hero">
+        <div>
+            <div class="score-hero-label">Overall DevOps Score</div>
+            <div class="score-hero-number">{{ "%.0f"|format(score) }}</div>
+        </div>
+        <div>
+            <div class="score-hero-label">DORA Maturity Level</div>
+            <div class="score-hero-level">{{ dora_level | title }}</div>
+            <div class="score-hero-summary">
+                Score {{ "%.1f"|format(score) }}/100 &mdash;
+                {% if score >= 75 %}
+                    Organisation demonstrates strong DevOps practices.
+                {% elif score >= 50 %}
+                    Organisation shows developing maturity with clear improvement paths.
+                {% else %}
+                    Significant remediation recommended across multiple categories.
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# Category score bars                                                 #}
+    {# ------------------------------------------------------------------ #}
+    <div class="card avoid-break">
+        <h3>Category Scores</h3>
+        {% for category, percentage in category_scores.items() %}
+            {% set pct = percentage | float %}
+            {% if pct >= 75 %}
+                {% set bar_class = "high" %}
+            {% elif pct >= 50 %}
+                {% set bar_class = "medium" %}
+            {% else %}
+                {% set bar_class = "low" %}
+            {% endif %}
+            <div class="score-bar-row">
+                <span class="score-bar-label">{{ category | replace("_", " ") | title }}</span>
+                <div class="score-bar-track">
+                    <div class="score-bar-fill {{ bar_class }}" style="width: {{ pct | round(1) }}%;"></div>
+                </div>
+                <span class="score-bar-value">{{ "%.0f"|format(pct) }}%</span>
+            </div>
+        {% else %}
+            <p class="text-muted">No category scores available.</p>
+        {% endfor %}
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# Executive summary prose                                             #}
+    {# ------------------------------------------------------------------ #}
+    <div class="section">
+        <h2>Summary</h2>
+        {% for paragraph in executive_summary.split("\n\n") %}
+            {% if paragraph.strip() %}
+                <p>{{ paragraph.strip() }}</p>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# Overall maturity assessment                                         #}
+    {# ------------------------------------------------------------------ #}
+    {% if overall_maturity %}
+    <div class="section">
+        <h2>Maturity Assessment</h2>
+        {% for paragraph in overall_maturity.split("\n\n") %}
+            {% if paragraph.strip() %}
+                <p>{{ paragraph.strip() }}</p>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ------------------------------------------------------------------ #}
+    {# Risk highlights callout                                             #}
+    {# ------------------------------------------------------------------ #}
+    {% if risk_highlights %}
+    <div class="callout callout-risk avoid-break">
+        <div class="callout-title">Critical Risk Highlights</div>
+        <ul class="list-unstyled">
+            {% for risk in risk_highlights %}
+            <li style="padding: 1mm 0; border-bottom: 1px solid #fecaca; font-size: 9pt;">
+                <strong>&#9679;</strong>&nbsp;{{ risk }}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>

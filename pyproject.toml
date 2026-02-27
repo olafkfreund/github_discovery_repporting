@@ -1,0 +1,65 @@
+[project]
+name = "devops-discovery"
+version = "0.1.0"
+description = "Multi-platform DevOps assessment and reporting tool"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "cryptography>=44.0.0",
+    "PyGithub>=2.5.0",
+    "python-gitlab>=5.1.0",
+    "anthropic>=0.42.0",
+    "weasyprint>=63.0",
+    "Jinja2>=3.1.4",
+    "httpx>=0.28.0",
+    "python-multipart>=0.0.18",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.28.0",
+    "mypy>=1.14.0",
+    "ruff>=0.9.0",
+    "aiosqlite>=0.20.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B"]
+ignore = [
+    "E402",   # module-level imports below docstrings
+    "E501",   # line too long (handled by formatter)
+    "B008",   # function call in default arg (FastAPI Depends/Query pattern)
+    "UP042",  # str enum (we use str+Enum intentionally for SQLAlchemy compat)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/providers/models.py" = ["F401", "F403"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]

@@ -1,0 +1,166 @@
+{# ======================================================================
+   Category Detail Section
+   Variables expected in context:
+     category_narratives  list[CategoryNarrative-like dicts]
+       Each dict has:
+         category          str
+         score_percentage  float
+         summary           str
+         strengths         list[str]
+         weaknesses        list[str]
+         key_findings      list[str]
+     findings_by_category dict[str, list[dict]]
+       Each finding dict:
+         check_id    str
+         check_name  str
+         severity    str
+         status      str
+         detail      str
+   ====================================================================== #}
+
+<div class="section page-break-before">
+    <h1>Category Detail</h1>
+    <p class="text-muted" style="margin-bottom: 6mm;">
+        Detailed analysis of each assessed DevOps category, including strengths,
+        improvement areas, and individual check results.
+    </p>
+
+    {% for narrative in category_narratives %}
+        {% set pct = narrative.score_percentage | float %}
+        {% if pct >= 75 %}
+            {% set bar_class = "high" %}
+            {% set score_badge = "badge-success" %}
+        {% elif pct >= 50 %}
+            {% set bar_class = "medium" %}
+            {% set score_badge = "badge-warning" %}
+        {% else %}
+            {% set bar_class = "low" %}
+            {% set score_badge = "badge-danger" %}
+        {% endif %}
+
+        <div class="avoid-break" style="margin-bottom: 10mm;">
+
+            {# Category header ----------------------------------------- #}
+            <div style="display: flex; align-items: center; justify-content: space-between;
+                        border-bottom: 2px solid var(--primary); padding-bottom: 2mm; margin-bottom: 4mm;">
+                <h2 style="border: none; margin: 0; padding: 0;">
+                    {{ narrative.category | replace("_", " ") | title }}
+                </h2>
+                <span class="badge {{ score_badge }}" style="font-size: 10pt; padding: 1mm 3mm;">
+                    {{ "%.0f"|format(pct) }}%
+                </span>
+            </div>
+
+            {# Score bar ----------------------------------------------- #}
+            <div class="score-bar-row" style="margin-bottom: 4mm;">
+                <span class="score-bar-label text-muted">Score</span>
+                <div class="score-bar-track">
+                    <div class="score-bar-fill {{ bar_class }}" style="width: {{ pct | round(1) }}%;"></div>
+                </div>
+                <span class="score-bar-value">{{ "%.1f"|format(pct) }}%</span>
+            </div>
+
+            {# Summary prose ------------------------------------------- #}
+            {% if narrative.summary %}
+            <p style="margin-bottom: 4mm;">{{ narrative.summary }}</p>
+            {% endif %}
+
+            {# Strengths and weaknesses --------------------------------- #}
+            {% if narrative.strengths or narrative.weaknesses %}
+            <div class="two-col" style="margin-bottom: 4mm;">
+                {% if narrative.strengths %}
+                <div class="card card-success avoid-break">
+                    <h4 style="color: #166534;">Strengths</h4>
+                    <ul class="list-check list-unstyled">
+                        {% for item in narrative.strengths %}
+                        <li style="font-size: 9pt; padding: 0.5mm 0;">{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                {% if narrative.weaknesses %}
+                <div class="card card-danger avoid-break">
+                    <h4 style="color: #991b1b;">Areas for Improvement</h4>
+                    <ul class="list-cross list-unstyled">
+                        {% for item in narrative.weaknesses %}
+                        <li style="font-size: 9pt; padding: 0.5mm 0;">{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {# Key findings -------------------------------------------- #}
+            {% if narrative.key_findings %}
+            <div class="card avoid-break" style="margin-bottom: 4mm;">
+                <h4>Key Findings</h4>
+                <ul>
+                    {% for finding in narrative.key_findings %}
+                    <li style="font-size: 9pt; padding: 0.5mm 0;">{{ finding }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {# Detailed findings table ---------------------------------- #}
+            {% set cat_findings = findings_by_category.get(narrative.category, []) %}
+            {% if cat_findings %}
+            <div class="keep-together">
+                <h4>Detailed Check Results</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 15%;">Check ID</th>
+                            <th style="width: 30%;">Check Name</th>
+                            <th style="width: 12%;">Severity</th>
+                            <th style="width: 12%;">Status</th>
+                            <th style="width: 31%;">Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for f in cat_findings %}
+                        <tr>
+                            <td>
+                                <code style="font-family: var(--font-mono); font-size: 7.5pt;">
+                                    {{ f.check_id }}
+                                </code>
+                            </td>
+                            <td>{{ f.check_name }}</td>
+                            <td>
+                                <span class="badge badge-{{ f.severity | lower }}">
+                                    {{ f.severity | title }}
+                                </span>
+                            </td>
+                            <td>
+                                {% set status_lower = f.status | lower %}
+                                {% if status_lower == "passed" %}
+                                    <span class="badge badge-passed">Passed</span>
+                                {% elif status_lower == "failed" %}
+                                    <span class="badge badge-failed">Failed</span>
+                                {% elif status_lower == "warning" %}
+                                    <span class="badge badge-warning-status">Warning</span>
+                                {% elif status_lower == "not_applicable" %}
+                                    <span class="badge badge-not-applicable">N/A</span>
+                                {% else %}
+                                    <span class="badge badge-error">{{ f.status | title }}</span>
+                                {% endif %}
+                            </td>
+                            <td style="font-size: 8pt; color: var(--neutral);">
+                                {{ f.detail | truncate(120) if f.detail else "&mdash;" }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+        </div>
+    {% else %}
+        <div class="callout callout-info">
+            <div class="callout-title">No Category Narratives Available</div>
+            <p>Category analysis data was not produced for this scan.</p>
+        </div>
+    {% endfor %}
+</div>

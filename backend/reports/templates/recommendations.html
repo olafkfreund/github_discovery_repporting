@@ -1,0 +1,138 @@
+{# ======================================================================
+   Recommendations Section
+   Variables expected in context:
+     recommendations  list[dict]
+       Each dict has:
+         priority    int
+         title       str
+         description str
+         category    str
+         effort      str   "low" | "medium" | "high"
+         impact      str   "low" | "medium" | "high"
+         check_ids   list[str]
+   ====================================================================== #}
+
+<div class="section page-break-before">
+    <h1>Recommendations</h1>
+    <p style="margin-bottom: 6mm;">
+        The following recommendations are listed in priority order.
+        Address higher-priority items first to achieve the greatest improvement
+        to your DevOps posture.  Effort and impact estimates are provided to
+        support planning decisions.
+    </p>
+
+    {% if recommendations %}
+
+        {# ---------------------------------------------------------------- #}
+        {# Summary table                                                    #}
+        {# ---------------------------------------------------------------- #}
+        <div class="card avoid-break" style="margin-bottom: 8mm;">
+            <h3>Recommendations at a Glance</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 6%;">#</th>
+                        <th style="width: 38%;">Title</th>
+                        <th style="width: 18%;">Category</th>
+                        <th style="width: 12%;">Effort</th>
+                        <th style="width: 12%;">Impact</th>
+                        <th style="width: 14%;">Related Checks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rec in recommendations | sort(attribute="priority") %}
+                    <tr>
+                        <td class="numeric" style="font-weight: 700; color: var(--primary);">
+                            {{ rec.priority }}
+                        </td>
+                        <td style="font-weight: 600; font-size: 8.5pt;">{{ rec.title }}</td>
+                        <td>
+                            <span class="badge badge-primary">
+                                {{ rec.category | replace("_", " ") | title }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if rec.effort == "low" %}
+                                <span class="badge badge-success">Low</span>
+                            {% elif rec.effort == "medium" %}
+                                <span class="badge badge-warning">Medium</span>
+                            {% else %}
+                                <span class="badge badge-danger">High</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if rec.impact == "high" %}
+                                <span class="badge badge-success">High</span>
+                            {% elif rec.impact == "medium" %}
+                                <span class="badge badge-warning">Medium</span>
+                            {% else %}
+                                <span class="badge badge-neutral">Low</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size: 7.5pt; color: var(--muted);">
+                            {% if rec.check_ids %}
+                                {{ rec.check_ids | join(", ") | truncate(30) }}
+                            {% else %}
+                                &mdash;
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# ---------------------------------------------------------------- #}
+        {# Detailed recommendation cards                                    #}
+        {# ---------------------------------------------------------------- #}
+        {% for rec in recommendations | sort(attribute="priority") %}
+        <div class="rec-card avoid-break">
+            <div class="rec-header">
+                <div class="rec-priority">{{ rec.priority }}</div>
+                <div class="rec-title">{{ rec.title }}</div>
+                <span class="badge badge-primary" style="margin-left: auto;">
+                    {{ rec.category | replace("_", " ") | title }}
+                </span>
+            </div>
+            <div class="rec-body">
+                <p class="rec-description">{{ rec.description }}</p>
+                <div class="rec-meta">
+                    <span class="text-muted" style="font-size: 8pt; font-weight: 600;">Effort:</span>
+                    {% if rec.effort == "low" %}
+                        <span class="badge badge-success">Low Effort</span>
+                    {% elif rec.effort == "medium" %}
+                        <span class="badge badge-warning">Medium Effort</span>
+                    {% else %}
+                        <span class="badge badge-danger">High Effort</span>
+                    {% endif %}
+
+                    <span class="text-muted" style="font-size: 8pt; font-weight: 600; margin-left: 2mm;">Impact:</span>
+                    {% if rec.impact == "high" %}
+                        <span class="badge badge-success">High Impact</span>
+                    {% elif rec.impact == "medium" %}
+                        <span class="badge badge-warning">Medium Impact</span>
+                    {% else %}
+                        <span class="badge badge-neutral">Low Impact</span>
+                    {% endif %}
+
+                    {% if rec.check_ids %}
+                    <span class="text-muted" style="font-size: 8pt; font-weight: 600; margin-left: 2mm;">Related:</span>
+                    {% for cid in rec.check_ids %}
+                        <code style="font-family: var(--font-mono); font-size: 7.5pt;
+                                     background: var(--surface); border: 1px solid var(--border);
+                                     border-radius: 2px; padding: 0 2px;">{{ cid }}</code>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+    {% else %}
+        <div class="callout callout-info">
+            <div class="callout-title">No Recommendations</div>
+            <p>No recommendations were generated for this scan. The organisation
+               may already be operating at a high level of DevOps maturity.</p>
+        </div>
+    {% endif %}
+</div>

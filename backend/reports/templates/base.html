@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ report_title | default("DevOps Discovery Report") }}</title>
+    <style>
+        {{ css_content }}
+    </style>
+</head>
+<body>
+
+    {# ------------------------------------------------------------------ #}
+    {# Cover page                                                          #}
+    {# ------------------------------------------------------------------ #}
+    <div class="cover-page">
+        <div class="cover-logo">
+            <span>DevOps Discovery</span>
+        </div>
+
+        <div>
+            <div class="cover-title">{{ report_title | default("GitHub DevOps Maturity Assessment") }}</div>
+            <div class="cover-subtitle">Confidential — Prepared for {{ customer_name }}</div>
+        </div>
+
+        <div class="cover-meta mt-md">
+            <div class="cover-meta-row">
+                <span class="cover-meta-label">Organisation</span>
+                <span>{{ org_name }}</span>
+            </div>
+            <div class="cover-meta-row">
+                <span class="cover-meta-label">Scan ID</span>
+                <span>{{ scan_id }}</span>
+            </div>
+            <div class="cover-meta-row">
+                <span class="cover-meta-label">Generated</span>
+                <span>{{ generated_at }}</span>
+            </div>
+            <div class="cover-meta-row">
+                <span class="cover-meta-label">Overall Score</span>
+                <span><strong>{{ "%.1f"|format(overall_score) }} / 100</strong></span>
+            </div>
+            <div class="cover-meta-row">
+                <span class="cover-meta-label">DORA Maturity Level</span>
+                <span>{{ dora_level | title }}</span>
+            </div>
+        </div>
+
+        <div class="cover-footer">
+            This report is confidential and intended solely for {{ customer_name }}.
+            Generated automatically by the DevOps Discovery platform.
+        </div>
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# Non-cover page header (repeated on each content page via CSS)      #}
+    {# ------------------------------------------------------------------ #}
+    <div class="report-header">
+        <div class="report-header-brand">DevOps Discovery Report</div>
+        <div class="report-header-org">{{ org_name }} &mdash; {{ generated_at }}</div>
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# Main content block                                                  #}
+    {# ------------------------------------------------------------------ #}
+    {% block content %}{% endblock %}
+
+</body>
+</html>

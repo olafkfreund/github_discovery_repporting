@@ -1,0 +1,573 @@
+/* =====================================================================
+   GitHub Discovery Report — Print-Optimised PDF Stylesheet
+   ===================================================================== */
+
+/* --------------------------------------------------------------------- */
+/* Page setup                                                             */
+/* --------------------------------------------------------------------- */
+
+@page {
+    size: A4;
+    margin: 20mm 20mm 24mm 20mm;
+
+    @bottom-center {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 9pt;
+        color: #6b7280;
+        border-top: 1px solid #e5e7eb;
+        padding-top: 4mm;
+    }
+}
+
+@page cover {
+    margin: 0;
+    @bottom-center { content: none; }
+}
+
+/* --------------------------------------------------------------------- */
+/* CSS Custom Properties (colour tokens)                                  */
+/* --------------------------------------------------------------------- */
+
+:root {
+    --primary:   #2563eb;
+    --secondary: #1e40af;
+    --accent:    #059669;
+    --danger:    #dc2626;
+    --warning:   #d97706;
+    --neutral:   #374151;
+    --muted:     #6b7280;
+    --border:    #e5e7eb;
+    --surface:   #f9fafb;
+    --white:     #ffffff;
+
+    /* Severity colours */
+    --sev-critical: #7f1d1d;
+    --sev-high:     #dc2626;
+    --sev-medium:   #d97706;
+    --sev-low:      #2563eb;
+    --sev-info:     #6b7280;
+
+    /* Typography scale */
+    --font-base: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+/* --------------------------------------------------------------------- */
+/* Global reset / base                                                    */
+/* --------------------------------------------------------------------- */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    font-family: var(--font-base);
+    font-size: 10pt;
+    line-height: 1.6;
+    color: var(--neutral);
+    background: var(--white);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+/* --------------------------------------------------------------------- */
+/* Cover page                                                             */
+/* --------------------------------------------------------------------- */
+
+.cover-page {
+    page: cover;
+    width: 210mm;
+    min-height: 297mm;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(160deg, var(--secondary) 0%, var(--primary) 60%, #3b82f6 100%);
+    color: var(--white);
+    padding: 30mm 25mm 20mm 25mm;
+    page-break-after: always;
+}
+
+.cover-logo {
+    font-size: 13pt;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.9;
+    margin-bottom: 40mm;
+}
+
+.cover-logo span {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 3px 10px;
+}
+
+.cover-title {
+    font-size: 28pt;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 6mm;
+}
+
+.cover-subtitle {
+    font-size: 14pt;
+    font-weight: 400;
+    opacity: 0.85;
+    margin-bottom: 16mm;
+}
+
+.cover-meta {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    padding: 6mm 8mm;
+    margin-bottom: auto;
+}
+
+.cover-meta-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2mm 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    font-size: 10pt;
+}
+
+.cover-meta-row:last-child {
+    border-bottom: none;
+}
+
+.cover-meta-label {
+    font-weight: 600;
+    opacity: 0.75;
+}
+
+.cover-footer {
+    font-size: 8pt;
+    opacity: 0.6;
+    margin-top: 10mm;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    padding-top: 4mm;
+}
+
+/* --------------------------------------------------------------------- */
+/* Report header (non-cover pages)                                        */
+/* --------------------------------------------------------------------- */
+
+.report-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid var(--primary);
+    padding-bottom: 4mm;
+    margin-bottom: 8mm;
+}
+
+.report-header-brand {
+    font-size: 9pt;
+    font-weight: 700;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.report-header-org {
+    font-size: 9pt;
+    color: var(--muted);
+}
+
+/* --------------------------------------------------------------------- */
+/* Typography                                                             */
+/* --------------------------------------------------------------------- */
+
+h1 {
+    font-size: 18pt;
+    font-weight: 800;
+    color: var(--secondary);
+    margin-bottom: 5mm;
+    line-height: 1.2;
+}
+
+h2 {
+    font-size: 13pt;
+    font-weight: 700;
+    color: var(--secondary);
+    margin-top: 8mm;
+    margin-bottom: 3mm;
+    padding-bottom: 2mm;
+    border-bottom: 1px solid var(--border);
+}
+
+h3 {
+    font-size: 11pt;
+    font-weight: 600;
+    color: var(--neutral);
+    margin-top: 5mm;
+    margin-bottom: 2mm;
+}
+
+h4 {
+    font-size: 10pt;
+    font-weight: 600;
+    color: var(--neutral);
+    margin-top: 3mm;
+    margin-bottom: 1.5mm;
+}
+
+p {
+    margin-bottom: 3mm;
+    text-align: justify;
+    hyphens: auto;
+}
+
+ul, ol {
+    margin-left: 5mm;
+    margin-bottom: 3mm;
+}
+
+li {
+    margin-bottom: 1mm;
+}
+
+strong {
+    font-weight: 600;
+    color: var(--neutral);
+}
+
+/* --------------------------------------------------------------------- */
+/* Section and card layout                                                */
+/* --------------------------------------------------------------------- */
+
+.section {
+    margin-bottom: 10mm;
+}
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5mm 6mm;
+    margin-bottom: 5mm;
+}
+
+.card-primary {
+    border-left: 4px solid var(--primary);
+    background: #eff6ff;
+}
+
+.card-success {
+    border-left: 4px solid var(--accent);
+    background: #f0fdf4;
+}
+
+.card-danger {
+    border-left: 4px solid var(--danger);
+    background: #fef2f2;
+}
+
+.card-warning {
+    border-left: 4px solid var(--warning);
+    background: #fffbeb;
+}
+
+/* --------------------------------------------------------------------- */
+/* Score display                                                          */
+/* --------------------------------------------------------------------- */
+
+.score-hero {
+    display: flex;
+    align-items: center;
+    gap: 8mm;
+    background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+    color: var(--white);
+    border-radius: 8px;
+    padding: 6mm 8mm;
+    margin-bottom: 6mm;
+}
+
+.score-hero-number {
+    font-size: 42pt;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    min-width: 30mm;
+    text-align: center;
+}
+
+.score-hero-label {
+    font-size: 9pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.8;
+    margin-bottom: 1mm;
+}
+
+.score-hero-level {
+    font-size: 14pt;
+    font-weight: 700;
+}
+
+.score-hero-summary {
+    font-size: 9pt;
+    opacity: 0.85;
+    margin-top: 2mm;
+}
+
+/* Score bar (CSS-only, div-width based) */
+
+.score-bar-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2.5mm;
+    gap: 3mm;
+}
+
+.score-bar-label {
+    font-size: 9pt;
+    font-weight: 500;
+    min-width: 28mm;
+    color: var(--neutral);
+    text-transform: capitalize;
+}
+
+.score-bar-track {
+    flex: 1;
+    height: 5mm;
+    background: var(--border);
+    border-radius: 3mm;
+    overflow: hidden;
+}
+
+.score-bar-fill {
+    height: 100%;
+    border-radius: 3mm;
+    background: var(--primary);
+}
+
+.score-bar-fill.high   { background: var(--accent); }
+.score-bar-fill.medium { background: var(--warning); }
+.score-bar-fill.low    { background: var(--danger); }
+
+.score-bar-value {
+    font-size: 9pt;
+    font-weight: 700;
+    min-width: 10mm;
+    text-align: right;
+    color: var(--neutral);
+}
+
+/* --------------------------------------------------------------------- */
+/* Badges                                                                 */
+/* --------------------------------------------------------------------- */
+
+.badge {
+    display: inline-block;
+    padding: 0.5mm 2.5mm;
+    border-radius: 3mm;
+    font-size: 7.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.4;
+}
+
+.badge-primary   { background: #dbeafe; color: var(--secondary); }
+.badge-success   { background: #dcfce7; color: #166534; }
+.badge-danger    { background: #fee2e2; color: #991b1b; }
+.badge-warning   { background: #fef3c7; color: #92400e; }
+.badge-neutral   { background: #f3f4f6; color: #374151; }
+.badge-muted     { background: #f3f4f6; color: var(--muted); }
+
+/* Severity-specific badges */
+.badge-critical { background: #fce7f3; color: #9d174d; }
+.badge-high     { background: #fee2e2; color: #991b1b; }
+.badge-medium   { background: #fef3c7; color: #92400e; }
+.badge-low      { background: #dbeafe; color: #1e40af; }
+.badge-info     { background: #f3f4f6; color: #374151; }
+
+/* Status badges */
+.badge-passed          { background: #dcfce7; color: #166534; }
+.badge-failed          { background: #fee2e2; color: #991b1b; }
+.badge-warning-status  { background: #fef3c7; color: #92400e; }
+.badge-not-applicable  { background: #f3f4f6; color: var(--muted); }
+.badge-error           { background: #fce7f3; color: #9d174d; }
+
+/* --------------------------------------------------------------------- */
+/* Tables                                                                 */
+/* --------------------------------------------------------------------- */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5pt;
+    margin-bottom: 5mm;
+}
+
+thead th {
+    background: var(--secondary);
+    color: var(--white);
+    font-weight: 700;
+    text-align: left;
+    padding: 2.5mm 3mm;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+tbody tr:nth-child(odd)  { background: var(--white); }
+tbody tr:nth-child(even) { background: var(--surface); }
+
+tbody tr:hover { background: #eff6ff; }
+
+td {
+    padding: 2mm 3mm;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+td.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------- */
+/* Callout / risk highlight box                                           */
+/* --------------------------------------------------------------------- */
+
+.callout {
+    border-radius: 6px;
+    padding: 4mm 5mm;
+    margin-bottom: 5mm;
+}
+
+.callout-title {
+    font-size: 10pt;
+    font-weight: 700;
+    margin-bottom: 2mm;
+    display: flex;
+    align-items: center;
+    gap: 2mm;
+}
+
+.callout-risk {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 4px solid var(--danger);
+}
+
+.callout-risk .callout-title { color: #991b1b; }
+
+.callout-info {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-left: 4px solid var(--primary);
+}
+
+.callout-info .callout-title { color: var(--secondary); }
+
+/* --------------------------------------------------------------------- */
+/* Recommendation cards                                                   */
+/* --------------------------------------------------------------------- */
+
+.rec-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 4mm;
+    overflow: hidden;
+}
+
+.rec-header {
+    display: flex;
+    align-items: center;
+    gap: 3mm;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 3mm 4mm;
+}
+
+.rec-priority {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 6mm;
+    height: 6mm;
+    border-radius: 50%;
+    background: var(--primary);
+    color: var(--white);
+    font-size: 8pt;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.rec-title {
+    font-size: 10pt;
+    font-weight: 700;
+    flex: 1;
+}
+
+.rec-body {
+    padding: 3mm 4mm;
+}
+
+.rec-description {
+    font-size: 9pt;
+    color: var(--neutral);
+    margin-bottom: 2.5mm;
+}
+
+.rec-meta {
+    display: flex;
+    gap: 2mm;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* --------------------------------------------------------------------- */
+/* Page break utilities                                                   */
+/* --------------------------------------------------------------------- */
+
+.page-break-before  { page-break-before: always; }
+.page-break-after   { page-break-after: always; }
+.avoid-break        { page-break-inside: avoid; }
+.keep-together      { page-break-inside: avoid; }
+
+/* --------------------------------------------------------------------- */
+/* Utility helpers                                                        */
+/* --------------------------------------------------------------------- */
+
+.text-muted   { color: var(--muted); }
+.text-primary { color: var(--primary); }
+.text-success { color: var(--accent); }
+.text-danger  { color: var(--danger); }
+.text-warning { color: var(--warning); }
+
+.mt-sm { margin-top: 2mm; }
+.mt-md { margin-top: 5mm; }
+.mb-sm { margin-bottom: 2mm; }
+.mb-md { margin-bottom: 5mm; }
+
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5mm;
+}
+
+.list-unstyled {
+    list-style: none;
+    margin-left: 0;
+}
+
+.list-check li::before {
+    content: "\2713\0020";
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.list-cross li::before {
+    content: "\2717\0020";
+    color: var(--danger);
+    font-weight: 700;
+}
