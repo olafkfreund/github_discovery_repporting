@@ -3,6 +3,7 @@ import type {
   CustomerCreatePayload,
   Connection,
   ConnectionCreatePayload,
+  ConnectionUpdatePayload,
   Scan,
   ScanScore,
   Finding,
@@ -62,6 +63,12 @@ export const api = {
   addConnection: (customerId: string, data: ConnectionCreatePayload) =>
     request<Connection>(`/customers/${customerId}/connections`, {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateConnection: (id: string, data: ConnectionUpdatePayload) =>
+    request<Connection>(`/connections/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
 

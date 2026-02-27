@@ -92,6 +92,14 @@ export interface ConnectionCreatePayload {
   base_url?: string
 }
 
+export interface ConnectionUpdatePayload {
+  display_name?: string
+  org_or_group?: string
+  auth_type?: 'token' | 'oauth' | 'pat'
+  credentials?: string
+  base_url?: string | null
+}
+
 export interface CustomerCreatePayload {
   name: string
   contact_email?: string

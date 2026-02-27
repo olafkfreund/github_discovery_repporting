@@ -7,6 +7,7 @@ import type {
   Scan,
   Report,
   ConnectionCreatePayload,
+  ConnectionUpdatePayload,
 } from '../types'
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -192,6 +193,157 @@ function AddConnectionForm({ customerId, onCreated, onCancel }: AddConnectionFor
   )
 }
 
+// ── Edit connection form ─────────────────────────────────────────────────────
+
+interface EditConnectionFormProps {
+  connection: Connection
+  onUpdated: (conn: Connection) => void
+  onCancel: () => void
+}
+
+function EditConnectionForm({ connection, onUpdated, onCancel }: EditConnectionFormProps) {
+  const [form, setForm] = useState({
+    display_name: connection.display_name,
+    org_or_group: connection.org_or_group,
+    auth_type: connection.auth_type as ConnectionUpdatePayload['auth_type'],
+    token: '',
+    base_url: connection.base_url ?? '',
+  })
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.display_name.trim() || !form.org_or_group.trim()) {
+      setError('Display name and organization are required')
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const payload: ConnectionUpdatePayload = {}
+      if (form.display_name.trim() !== connection.display_name) {
+        payload.display_name = form.display_name.trim()
+      }
+      if (form.org_or_group.trim() !== connection.org_or_group) {
+        payload.org_or_group = form.org_or_group.trim()
+      }
+      if (form.auth_type !== connection.auth_type) {
+        payload.auth_type = form.auth_type
+      }
+      if (form.token.trim()) {
+        payload.credentials = form.token.trim()
+      }
+      const newBaseUrl = form.base_url?.trim() || null
+      if (newBaseUrl !== (connection.base_url ?? null)) {
+        payload.base_url = newBaseUrl
+      }
+      if (Object.keys(payload).length === 0) {
+        setError('No changes detected')
+        setSubmitting(false)
+        return
+      }
+      const updated = await api.updateConnection(connection.id, payload)
+      onUpdated(updated)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update connection')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mt-2">
+      <h4 className="text-sm font-semibold text-gray-800 mb-4">
+        Edit Connection: {connection.display_name}
+      </h4>
+      {error && (
+        <div className="mb-3 bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">{error}</div>
+      )}
+      <form onSubmit={(e) => { void handleSubmit(e) }} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Platform</label>
+            <input
+              type="text"
+              value={PLATFORM_LABELS[connection.platform] ?? connection.platform}
+              disabled
+              className="block w-full rounded-md border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Display Name</label>
+            <input
+              type="text"
+              value={form.display_name}
+              onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
+              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                         focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              required
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Organization / Group</label>
+          <input
+            type="text"
+            value={form.org_or_group}
+            onChange={(e) => setForm((f) => ({ ...f, org_or_group: e.target.value }))}
+            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                       focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            required
+          />
+        </div>
+        {connection.platform !== 'github' && (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Base URL</label>
+            <input
+              type="url"
+              value={form.base_url}
+              onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
+              placeholder="https://gitlab.mycompany.com"
+              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                         focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
+        )}
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            New Access Token <span className="text-gray-400 font-normal">(leave blank to keep current)</span>
+          </label>
+          <input
+            type="password"
+            value={form.token}
+            onChange={(e) => setForm((f) => ({ ...f, token: e.target.value }))}
+            placeholder="Enter new token to update..."
+            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                       focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+        </div>
+        <div className="flex gap-3 pt-1">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-md
+                       hover:bg-amber-700 disabled:opacity-50
+                       focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+          >
+            {submitting ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-md
+                       border border-gray-300 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CustomerDetailPage() {
@@ -204,6 +356,7 @@ export default function CustomerDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [showAddConnection, setShowAddConnection] = useState(false)
+  const [editingConnId, setEditingConnId] = useState<string | null>(null)
   const [validatingId, setValidatingId] = useState<string | null>(null)
   const [deletingConnId, setDeletingConnId] = useState<string | null>(null)
 
@@ -387,40 +540,56 @@ export default function CustomerDetailPage() {
           ) : (
             <div className="space-y-3 mt-4">
               {connections.map((conn) => (
-                <div
-                  key={conn.id}
-                  className="flex items-center justify-between p-4 rounded-lg border border-gray-200 bg-gray-50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${conn.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{conn.display_name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {PLATFORM_LABELS[conn.platform] ?? conn.platform} · {conn.org_or_group}
-                        {conn.base_url && ` · ${conn.base_url}`}
-                      </p>
+                <div key={conn.id}>
+                  <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 bg-gray-50">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full ${conn.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{conn.display_name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {PLATFORM_LABELS[conn.platform] ?? conn.platform} · {conn.org_or_group}
+                          {conn.base_url && ` · ${conn.base_url}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setEditingConnId(editingConnId === conn.id ? null : conn.id)}
+                        className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50
+                                   border border-amber-200 rounded-md hover:bg-amber-100"
+                      >
+                        {editingConnId === conn.id ? 'Cancel Edit' : 'Edit'}
+                      </button>
+                      <button
+                        onClick={() => { void handleValidate(conn.id) }}
+                        disabled={validatingId === conn.id}
+                        className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50
+                                   border border-indigo-200 rounded-md hover:bg-indigo-100
+                                   disabled:opacity-50"
+                      >
+                        {validatingId === conn.id ? 'Validating...' : 'Validate'}
+                      </button>
+                      <button
+                        onClick={() => { void handleDeleteConnection(conn.id) }}
+                        disabled={deletingConnId === conn.id}
+                        className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50
+                                   border border-red-200 rounded-md hover:bg-red-100
+                                   disabled:opacity-50"
+                      >
+                        {deletingConnId === conn.id ? 'Deleting...' : 'Delete'}
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => { void handleValidate(conn.id) }}
-                      disabled={validatingId === conn.id}
-                      className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50
-                                 border border-indigo-200 rounded-md hover:bg-indigo-100
-                                 disabled:opacity-50"
-                    >
-                      {validatingId === conn.id ? 'Validating…' : 'Validate'}
-                    </button>
-                    <button
-                      onClick={() => { void handleDeleteConnection(conn.id) }}
-                      disabled={deletingConnId === conn.id}
-                      className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50
-                                 border border-red-200 rounded-md hover:bg-red-100
-                                 disabled:opacity-50"
-                    >
-                      {deletingConnId === conn.id ? 'Deleting…' : 'Delete'}
-                    </button>
-                  </div>
+                  {editingConnId === conn.id && (
+                    <EditConnectionForm
+                      connection={conn}
+                      onUpdated={(updated) => {
+                        setConnections((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+                        setEditingConnId(null)
+                      }}
+                      onCancel={() => setEditingConnId(null)}
+                    />
+                  )}
                 </div>
               ))}
             </div>
