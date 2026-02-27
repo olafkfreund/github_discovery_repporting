@@ -119,7 +119,7 @@ class ScanOrchestrator:
         return results
 
     @property
-    def all_scanners(self) -> list:
+    def all_scanners(self) -> list[OrgScanner | Scanner]:
         """Return all scanners (org + repo) for weight/check count queries."""
         return list(self._org_scanners) + list(self._repo_scanners)
 
@@ -143,49 +143,43 @@ class ScanOrchestrator:
 
         # Build scanner weight lookup keyed on category
         scanner_weights: dict[Category, float] = {}
-        for s in self._org_scanners:
-            scanner_weights[s.category] = s.weight
-        for s in self._repo_scanners:
-            scanner_weights[s.category] = s.weight
+        for org_s in self._org_scanners:
+            scanner_weights[org_s.category] = org_s.weight
+        for repo_s in self._repo_scanners:
+            scanner_weights[repo_s.category] = repo_s.weight
 
         # Initialise accumulators for every known category
-        accumulators: dict[Category, dict] = {
-            cat: {
-                "score": 0.0,
-                "max_score": 0.0,
-                "finding_count": 0,
-                "pass_count": 0,
-                "fail_count": 0,
-            }
-            for cat in Category
-        }
+        scores: dict[Category, float] = {cat: 0.0 for cat in Category}
+        max_scores: dict[Category, float] = {cat: 0.0 for cat in Category}
+        finding_counts: dict[Category, int] = {cat: 0 for cat in Category}
+        pass_counts: dict[Category, int] = {cat: 0 for cat in Category}
+        fail_counts: dict[Category, int] = {cat: 0 for cat in Category}
 
         for result in results:
             cat = result.check.category
-            acc = accumulators[cat]
-            acc["finding_count"] += 1
+            finding_counts[cat] += 1
 
             if result.status is CheckStatus.not_applicable:
                 continue
 
-            acc["max_score"] += result.check.weight
-            acc["score"] += result.score
+            max_scores[cat] += result.check.weight
+            scores[cat] += result.score
 
             if result.status is CheckStatus.passed:
-                acc["pass_count"] += 1
+                pass_counts[cat] += 1
             elif result.status in (CheckStatus.failed, CheckStatus.error):
-                acc["fail_count"] += 1
+                fail_counts[cat] += 1
 
         category_scores: dict[Category, CategoryScore] = {}
-        for cat, acc in accumulators.items():
+        for cat in Category:
             category_scores[cat] = CategoryScore(
                 category=cat,
-                score=acc["score"],
-                max_score=acc["max_score"],
+                score=scores[cat],
+                max_score=max_scores[cat],
                 weight=scanner_weights.get(cat, 0.0),
-                finding_count=acc["finding_count"],
-                pass_count=acc["pass_count"],
-                fail_count=acc["fail_count"],
+                finding_count=finding_counts[cat],
+                pass_count=pass_counts[cat],
+                fail_count=fail_counts[cat],
             )
 
         return category_scores

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from backend.models.enums import Platform
-from backend.schemas.platform_data import NormalizedRepo, RepoAssessmentData
+from backend.schemas.platform_data import NormalizedRepo, OrgAssessmentData, RepoAssessmentData
 
 
 class GitLabProvider:
@@ -54,6 +54,14 @@ class GitLabProvider:
         self,
         repo: NormalizedRepo,
     ) -> RepoAssessmentData:
+        """Not yet implemented.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError("GitLab provider not yet implemented")
+
+    async def get_org_assessment_data(self) -> OrgAssessmentData:
         """Not yet implemented.
 
         Raises:

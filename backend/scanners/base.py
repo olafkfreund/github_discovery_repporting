@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from backend.models.enums import Category, CheckStatus, Severity
 from backend.schemas.platform_data import OrgAssessmentData, RepoAssessmentData
@@ -34,7 +34,7 @@ class CheckResult:
     check: ScanCheck
     status: CheckStatus
     detail: str = ""
-    evidence: dict | None = None
+    evidence: dict[str, Any] | None = None
     score: float = field(init=False)
 
     def __post_init__(self) -> None:
