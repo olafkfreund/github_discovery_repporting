@@ -123,14 +123,10 @@ class AnalysisClient:
             ) from exc
         except anthropic.APIConnectionError as exc:
             logger.error("AnalysisClient.analyze: connection error — %s", exc)
-            raise AnalysisClientError(
-                f"Failed to connect to Anthropic API: {exc}"
-            ) from exc
+            raise AnalysisClientError(f"Failed to connect to Anthropic API: {exc}") from exc
         except anthropic.APIError as exc:
             logger.error("AnalysisClient.analyze: unexpected API error — %s", exc)
-            raise AnalysisClientError(
-                f"Anthropic API error: {exc}"
-            ) from exc
+            raise AnalysisClientError(f"Anthropic API error: {exc}") from exc
 
         # Extract text from the first TextBlock in the response.
         for block in message.content:
@@ -141,9 +137,7 @@ class AnalysisClient:
                 )
                 return block.text
 
-        raise AnalysisClientError(
-            "Anthropic API response contained no text content blocks."
-        )
+        raise AnalysisClientError("Anthropic API response contained no text content blocks.")
 
 
 # ---------------------------------------------------------------------------

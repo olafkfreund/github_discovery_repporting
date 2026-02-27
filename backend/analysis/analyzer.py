@@ -120,9 +120,7 @@ class DevOpsAnalyzer:
         """
         # Step 1: Derive passed check IDs.
         passed_ids: set[str] = {
-            r.check.check_id
-            for r in scan_results
-            if r.status is CheckStatus.passed
+            r.check.check_id for r in scan_results if r.status is CheckStatus.passed
         }
 
         # Step 2: Compute benchmark alignment.
@@ -132,16 +130,18 @@ class DevOpsAnalyzer:
         cis_compliance: dict[str, dict[str, Any]] = calculate_cis_compliance(passed_ids)
 
         # Step 3 & 4: Hydrate the user prompt.
-        total_repos: int = len({r.evidence.get("repo") for r in scan_results if r.evidence and "repo" in r.evidence})
+        total_repos: int = len(
+            {r.evidence.get("repo") for r in scan_results if r.evidence and "repo" in r.evidence}
+        )
         # Use a safe fallback for total_repos when evidence doesn't carry repo keys.
         if total_repos == 0:
-            total_repos = max(1, len(scan_results) // max(1, sum(
-                cs.finding_count for cs in category_scores.values()
-            ) or 1))
+            total_repos = max(
+                1,
+                len(scan_results)
+                // max(1, sum(cs.finding_count for cs in category_scores.values()) or 1),
+            )
 
-        json_schema: str = json.dumps(
-            AnalysisResult.model_json_schema(), indent=2
-        )
+        json_schema: str = json.dumps(AnalysisResult.model_json_schema(), indent=2)
 
         user_prompt: str = USER_PROMPT_TEMPLATE.format(
             org_name=org_name,
@@ -167,8 +167,7 @@ class DevOpsAnalyzer:
             )
         except AnalysisClientError as exc:
             logger.warning(
-                "DevOpsAnalyzer.analyze_scan: AI call failed — %s.  "
-                "Returning fallback result.",
+                "DevOpsAnalyzer.analyze_scan: AI call failed — %s.  Returning fallback result.",
                 exc,
             )
             return self._create_fallback_result(
@@ -228,10 +227,7 @@ class DevOpsAnalyzer:
             A multi-line string table with columns for category, score,
             percentage, pass count, and fail count.
         """
-        header = (
-            f"{'Category':<20} {'Score':>8} {'Max':>8} {'%':>7} "
-            f"{'Passed':>8} {'Failed':>8}"
-        )
+        header = f"{'Category':<20} {'Score':>8} {'Max':>8} {'%':>7} {'Passed':>8} {'Failed':>8}"
         separator = "-" * len(header)
         rows: list[str] = [header, separator]
 
@@ -314,9 +310,7 @@ class DevOpsAnalyzer:
                 continue
             lines.append(f"\n### {cat.value.upper()} ({len(items)} passed)\n")
             for r in items:
-                lines.append(
-                    f"  [PASS]     {r.check.check_id:<12} {r.check.check_name}"
-                )
+                lines.append(f"  [PASS]     {r.check.check_id:<12} {r.check.check_name}")
 
         return "\n".join(lines)
 
@@ -344,29 +338,17 @@ class DevOpsAnalyzer:
         dora_data = DORA_LEVELS.get(dora_level, {})
         lines.append("### DORA Metrics\n")
         lines.append(f"  Performance level : {dora_level.upper()}")
-        lines.append(
-            f"  Deployment freq.  : {dora_data.get('deployment_frequency', 'N/A')}"
-        )
-        lines.append(
-            f"  Lead time         : {dora_data.get('lead_time', 'N/A')}"
-        )
-        lines.append(
-            f"  Change failure    : {dora_data.get('change_failure_rate', 'N/A')}"
-        )
-        lines.append(
-            f"  MTTR              : {dora_data.get('mttr', 'N/A')}"
-        )
-        lines.append(
-            f"  Score threshold   : >= {dora_data.get('score_threshold', 'N/A')}"
-        )
+        lines.append(f"  Deployment freq.  : {dora_data.get('deployment_frequency', 'N/A')}")
+        lines.append(f"  Lead time         : {dora_data.get('lead_time', 'N/A')}")
+        lines.append(f"  Change failure    : {dora_data.get('change_failure_rate', 'N/A')}")
+        lines.append(f"  MTTR              : {dora_data.get('mttr', 'N/A')}")
+        lines.append(f"  Score threshold   : >= {dora_data.get('score_threshold', 'N/A')}")
 
         # ---- OpenSSF ----------------------------------------------------
         openssf_passed = [cat for cat, ok in openssf.items() if ok]
         openssf_failed = [cat for cat, ok in openssf.items() if not ok]
         lines.append("\n### OpenSSF Scorecard Alignment\n")
-        lines.append(
-            f"  Satisfied categories ({len(openssf_passed)}/{len(openssf)}):"
-        )
+        lines.append(f"  Satisfied categories ({len(openssf_passed)}/{len(openssf)}):")
         for cat in openssf_passed:
             lines.append(f"    [PASS] {cat}")
         if openssf_failed:
@@ -379,12 +361,8 @@ class DevOpsAnalyzer:
         lines.append(f"  Achieved level: {slsa_level}")
         if slsa_level > 0:
             slsa_data = SLSA_LEVELS.get(slsa_level, {})
-            lines.append(
-                f"  Level name    : {slsa_data.get('name', 'N/A')}"
-            )
-            lines.append(
-                f"  Description   : {slsa_data.get('description', 'N/A')}"
-            )
+            lines.append(f"  Level name    : {slsa_data.get('name', 'N/A')}")
+            lines.append(f"  Description   : {slsa_data.get('description', 'N/A')}")
         else:
             lines.append("  No SLSA level requirements currently satisfied.")
 
@@ -392,9 +370,7 @@ class DevOpsAnalyzer:
         lines.append("\n### CIS Software Supply Chain Security\n")
         total_domains = len(cis)
         compliant_domains = sum(1 for d in cis.values() if d.get("compliant"))
-        lines.append(
-            f"  Compliant domains: {compliant_domains}/{total_domains}\n"
-        )
+        lines.append(f"  Compliant domains: {compliant_domains}/{total_domains}\n")
         for domain_id, domain_data in cis.items():
             status = "COMPLIANT" if domain_data.get("compliant") else "PARTIAL"
             pct = domain_data.get("percentage", 0)
@@ -402,8 +378,7 @@ class DevOpsAnalyzer:
             total_count = domain_data.get("total", 0)
             desc = domain_data.get("description", domain_id)
             lines.append(
-                f"  [{status:<9}] {desc:<35} "
-                f"{passed_count}/{total_count} checks ({pct:.0f}%)"
+                f"  [{status:<9}] {desc:<35} {passed_count}/{total_count} checks ({pct:.0f}%)"
             )
 
         return "\n".join(lines)
@@ -491,9 +466,7 @@ class DevOpsAnalyzer:
             if cs is None or cs.max_score == 0.0:
                 continue
             pct = cs.percentage
-            status_word = (
-                "strong" if pct >= 75 else "moderate" if pct >= 50 else "weak"
-            )
+            status_word = "strong" if pct >= 75 else "moderate" if pct >= 50 else "weak"
             narratives.append(
                 CategoryNarrative(
                     category=cat.value,
@@ -608,9 +581,13 @@ class DevOpsAnalyzer:
         ]
 
         error_note = (
-            f"  Note: AI narrative generation was unavailable ({error_message}). "
-            f"This report contains automatically generated content only."
-        ) if error_message else ""
+            (
+                f"  Note: AI narrative generation was unavailable ({error_message}). "
+                f"This report contains automatically generated content only."
+            )
+            if error_message
+            else ""
+        )
 
         return AnalysisResult(
             executive_summary=(

@@ -8,6 +8,9 @@ from backend.schemas.platform_data import (
     BranchProtection,
     CIWorkflow,
     NormalizedRepo,
+    OrgAssessmentData,
+    OrgMemberInfo,
+    OrgSecuritySettings,
     PullRequestInfo,
     RepoAssessmentData,
     SecurityFeatures,
@@ -24,7 +27,9 @@ def _utc(year: int, month: int, day: int) -> datetime:
     return datetime(year, month, day, tzinfo=UTC)
 
 
-def _make_repo(name: str = "test-repo", url: str = "https://github.com/org/test-repo") -> NormalizedRepo:
+def _make_repo(
+    name: str = "test-repo", url: str = "https://github.com/org/test-repo"
+) -> NormalizedRepo:
     """Return a minimal :class:`NormalizedRepo` with sensible defaults."""
     return NormalizedRepo(
         external_id="1",
@@ -61,7 +66,42 @@ def _make_failure_run() -> WorkflowRun:
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Org-level fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def well_configured_org() -> OrgAssessmentData:
+    """A fully hardened organisation with all security features enabled."""
+    return OrgAssessmentData(
+        org_name="test-org",
+        members=OrgMemberInfo(
+            total_members=100,
+            admin_count=3,
+            mfa_enforced=True,
+            sso_enabled=True,
+        ),
+        security_settings=OrgSecuritySettings(
+            default_repo_permission="read",
+            members_can_create_public_repos=False,
+            two_factor_requirement_enabled=True,
+            ip_allow_list_enabled=True,
+        ),
+        has_org_level_security_policy=True,
+        billing_plan="enterprise",
+    )
+
+
+@pytest.fixture()
+def minimal_org() -> OrgAssessmentData:
+    """An organisation with minimal configuration."""
+    return OrgAssessmentData(
+        org_name="minimal-org",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Repo-level fixtures
 # ---------------------------------------------------------------------------
 
 
@@ -69,15 +109,7 @@ def _make_failure_run() -> WorkflowRun:
 def well_protected_repo() -> RepoAssessmentData:
     """A repository with all security, CI, and collaboration features enabled.
 
-    Satisfies every non-warning check in all five scanner categories:
-
-    - Branch protection: all rules set, 2 required reviews, signed commits.
-    - Security: dependabot + secret scanning, no vulnerabilities, SBOM, policy.
-    - CI: one workflow with tests, lint, security scan, deploy; triggers on PR.
-    - Recent runs: 20 successes, average duration under 10 minutes.
-    - Collaboration: CODEOWNERS, PR template, contributing guide, reviewed PRs.
-    - Governance: LICENSE present.
-    - Files: README, LICENSE, SBOM.
+    Satisfies every non-warning check across all 16 scanner categories.
     """
     recent_runs = [_make_success_run(duration_seconds=240) for _ in range(20)]
 
@@ -135,6 +167,39 @@ def well_protected_repo() -> RepoAssessmentData:
         has_readme=True,
         has_sbom=True,
         recent_prs=recent_prs,
+        # Expanded fields
+        has_dockerfile=True,
+        has_docker_compose=True,
+        has_container_scanning=True,
+        has_iac_files=True,
+        has_monitoring_config=True,
+        has_backup_config=True,
+        has_changelog=True,
+        has_adr_directory=True,
+        has_sast_config=True,
+        has_dast_config=True,
+        has_api_docs=True,
+        has_runbook=True,
+        has_sla_document=True,
+        has_migration_guide=True,
+        has_deprecation_policy=True,
+        has_issue_templates=True,
+        has_discussions_enabled=True,
+        has_project_boards=True,
+        has_wiki=True,
+        has_branching_strategy_doc=True,
+        has_release_process_doc=True,
+        has_hotfix_process_doc=True,
+        has_definition_of_done=True,
+        has_feature_flags=True,
+        has_editorconfig=True,
+        has_type_checking=True,
+        has_dr_runbook=True,
+        has_incident_response_playbook=True,
+        has_on_call_doc=True,
+        has_dashboards_as_code=True,
+        iac_tool="terraform",
+        test_coverage_percent=85.0,
     )
 
 
@@ -143,9 +208,7 @@ def minimal_repo() -> RepoAssessmentData:
     """A repository with almost nothing configured.
 
     Only a :class:`NormalizedRepo` with a name and URL is present; every
-    optional feature flag is absent or falsy.  Most security and CI checks
-    should fail, and checks that require security feature data will be
-    ``not_applicable``.
+    optional feature flag is absent or falsy.
     """
     return RepoAssessmentData(
         repo=_make_repo(name="minimal-repo", url="https://github.com/org/minimal-repo"),
@@ -156,11 +219,11 @@ def minimal_repo() -> RepoAssessmentData:
 def partial_repo() -> RepoAssessmentData:
     """A repository with partial configuration.
 
-    - Branch protection enabled with 1 required review (SEC-003 fails).
+    - Branch protection enabled with 1 required review.
     - No stale-review dismissal, no admin enforcement, no signed commits.
-    - Security features present but only dependabot; no vulnerabilities.
-    - CI workflow present with tests only (no lint, security, or deploy).
-    - README and LICENSE present; no CODEOWNERS, PR template, or guide.
+    - Security features present but only dependabot.
+    - CI workflow present with tests only.
+    - README and LICENSE present; some other files.
     - Recent PRs present but only some are reviewed.
     """
     ci_workflow = CIWorkflow(
@@ -192,7 +255,7 @@ def partial_repo() -> RepoAssessmentData:
         has_security_policy=False,
     )
 
-    # 4 PRs reviewed out of 5 merged (80 % → passes COLLAB-004 >75 % threshold)
+    # 4 PRs reviewed out of 5 merged (80%)
     recent_prs = [
         PullRequestInfo(
             number=i,
@@ -218,4 +281,7 @@ def partial_repo() -> RepoAssessmentData:
         has_readme=True,
         has_sbom=False,
         recent_prs=recent_prs,
+        has_dockerfile=True,
+        has_changelog=True,
+        has_editorconfig=True,
     )

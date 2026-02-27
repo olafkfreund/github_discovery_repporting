@@ -9,19 +9,21 @@ standardised set of categories (called *checks* in Scorecard terminology).
 :data:`OPENSSF_MAPPING` links each Scorecard category to the internal check
 IDs used by our scanner pipeline.  A category is considered *satisfied* when
 every mapped check ID appears in the caller's set of passed checks.
+
+Updated for the 16-domain scanner architecture.
 """
 
 OPENSSF_MAPPING: dict[str, list[str]] = {
-    "Branch-Protection": ["SEC-001", "SEC-002", "SEC-003", "SEC-005", "SEC-006"],
-    "Code-Review": ["COLLAB-004", "SEC-002"],
+    "Branch-Protection": ["REPO-001", "REPO-002", "REPO-003", "REPO-005", "REPO-006"],
+    "Code-Review": ["SDLC-003", "REPO-002"],
     "CI-Tests": ["CICD-001", "CICD-003"],
-    "Vulnerabilities": ["SEC-011", "SEC-012"],
-    "Dependency-Update-Tool": ["SEC-010"],
-    "Security-Policy": ["SEC-021"],
-    "Signed-Releases": ["SEC-007"],
-    "Token-Permissions": ["SEC-022"],
-    "SAST": ["CICD-005", "CQ-004"],
-    "License": ["GOV-004"],
+    "Vulnerabilities": ["DEP-002", "DEP-003"],
+    "Dependency-Update-Tool": ["DEP-001"],
+    "Security-Policy": ["COMP-004"],
+    "Signed-Releases": ["REPO-007"],
+    "Token-Permissions": ["IAM-008"],
+    "SAST": ["CICD-005", "SAST-001"],
+    "License": ["COMP-001"],
 }
 
 
@@ -33,7 +35,7 @@ def calculate_openssf_alignment(passed_check_ids: set[str]) -> dict[str, bool]:
     partially present yield ``False``.
 
     Args:
-        passed_check_ids: The set of check IDs (e.g. ``{"SEC-001", "CICD-001"}``)
+        passed_check_ids: The set of check IDs (e.g. ``{"REPO-001", "CICD-001"}``)
             that produced a ``passed`` result during the scan.
 
     Returns:
@@ -41,7 +43,7 @@ def calculate_openssf_alignment(passed_check_ids: set[str]) -> dict[str, bool]:
         category is fully satisfied.
 
     Examples:
-        >>> calculate_openssf_alignment({"GOV-004"})
+        >>> calculate_openssf_alignment({"COMP-001"})
         {'Branch-Protection': False, ..., 'License': True}
     """
     return {

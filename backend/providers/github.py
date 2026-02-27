@@ -15,6 +15,9 @@ from backend.schemas.platform_data import (
     BranchProtection,
     CIWorkflow,
     NormalizedRepo,
+    OrgAssessmentData,
+    OrgMemberInfo,
+    OrgSecuritySettings,
     PullRequestInfo,
     RepoAssessmentData,
     SecurityFeatures,
@@ -68,11 +71,7 @@ class GitHubProvider:
         self._org_name = org_name
         self._base_url = base_url
         auth = Auth.Token(token)
-        self._client = (
-            Github(base_url=base_url, auth=auth)
-            if base_url
-            else Github(auth=auth)
-        )
+        self._client = Github(base_url=base_url, auth=auth) if base_url else Github(auth=auth)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -156,9 +155,7 @@ class GitHubProvider:
         """
 
         def _fetch_all() -> RepoAssessmentData:
-            gh_repo = self._client.get_repo(
-                f"{self._org_name}/{repo.name}"
-            )
+            gh_repo = self._client.get_repo(f"{self._org_name}/{repo.name}")
             branch_protection = _fetch_branch_protection(gh_repo, repo.default_branch)
             ci_workflows = _fetch_ci_workflows(gh_repo)
             security = _fetch_security_features(gh_repo)
@@ -170,16 +167,83 @@ class GitHubProvider:
                 branch_protection=branch_protection,
                 ci_workflows=ci_workflows,
                 security=security,
-                has_codeowners=file_flags["has_codeowners"],
-                has_pr_template=file_flags["has_pr_template"],
-                has_contributing_guide=file_flags["has_contributing_guide"],
-                has_license=file_flags["has_license"],
-                has_readme=file_flags["has_readme"],
-                has_sbom=file_flags["has_sbom"],
                 recent_prs=recent_prs,
+                **file_flags,
             )
 
         return await self._run(_fetch_all)
+
+    async def get_org_assessment_data(self) -> OrgAssessmentData:
+        """Collect organisation-level assessment data from GitHub."""
+
+        def _fetch_org() -> OrgAssessmentData:
+            org = self._client.get_organization(self._org_name)
+
+            # Membership stats
+            members = OrgMemberInfo(total_members=0, admin_count=0)
+            try:
+                all_members = list(org.get_members())
+                members.total_members = len(all_members)
+                admins = list(org.get_members(role="admin"))
+                members.admin_count = len(admins)
+            except GithubException as exc:
+                logger.debug("Could not fetch member counts for %s: %s", self._org_name, exc)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Unexpected error fetching members for %s: %s", self._org_name, exc)
+
+            # 2FA enforcement
+            try:
+                members.mfa_enforced = bool(org.two_factor_requirement_enabled)
+            except (GithubException, AttributeError) as exc:
+                logger.debug("Could not check 2FA for %s: %s", self._org_name, exc)
+
+            # Security settings
+            security_settings = OrgSecuritySettings()
+            try:
+                security_settings.default_repo_permission = org.default_repository_permission
+                security_settings.members_can_create_public_repos = bool(
+                    org.members_can_create_public_repositories
+                )
+                security_settings.two_factor_requirement_enabled = bool(
+                    org.two_factor_requirement_enabled
+                )
+            except (GithubException, AttributeError) as exc:
+                logger.debug(
+                    "Could not fetch org security settings for %s: %s", self._org_name, exc
+                )
+
+            # Org-level security policy (check .github repo)
+            has_security_policy = False
+            try:
+                dot_github = self._client.get_repo(f"{self._org_name}/.github")
+                for path in ("SECURITY.md", "profile/SECURITY.md"):
+                    try:
+                        dot_github.get_contents(path)
+                        has_security_policy = True
+                        break
+                    except GithubException:
+                        continue
+            except GithubException:
+                pass
+            except Exception:  # noqa: BLE001
+                pass
+
+            # Billing plan
+            billing_plan: str | None = None
+            try:
+                billing_plan = org.plan.name if org.plan else None
+            except (GithubException, AttributeError):
+                pass
+
+            return OrgAssessmentData(
+                org_name=self._org_name,
+                members=members,
+                security_settings=security_settings,
+                has_org_level_security_policy=has_security_policy,
+                billing_plan=billing_plan,
+            )
+
+        return await self._run(_fetch_org)
 
 
 # ---------------------------------------------------------------------------
@@ -439,7 +503,8 @@ def _fetch_security_features(repo: GithubRepo) -> SecurityFeatures:
 def _fetch_file_flags(repo: GithubRepo) -> dict[str, bool]:
     """Check for the presence of key repository files.
 
-    Returns a mapping of flag names to boolean values.
+    Returns a mapping of flag names to boolean values covering all 16
+    scanner domains.
     """
     flags: dict[str, bool] = {
         "has_codeowners": False,
@@ -448,14 +513,40 @@ def _fetch_file_flags(repo: GithubRepo) -> dict[str, bool]:
         "has_license": False,
         "has_readme": False,
         "has_sbom": False,
+        "has_dockerfile": False,
+        "has_docker_compose": False,
+        "has_container_scanning": False,
+        "has_iac_files": False,
+        "has_monitoring_config": False,
+        "has_backup_config": False,
+        "has_changelog": False,
+        "has_adr_directory": False,
+        "has_sast_config": False,
+        "has_dast_config": False,
+        "has_api_docs": False,
+        "has_runbook": False,
+        "has_sla_document": False,
+        "has_migration_guide": False,
+        "has_deprecation_policy": False,
+        "has_issue_templates": False,
+        "has_discussions_enabled": False,
+        "has_project_boards": False,
+        "has_wiki": False,
+        "has_branching_strategy_doc": False,
+        "has_release_process_doc": False,
+        "has_hotfix_process_doc": False,
+        "has_definition_of_done": False,
+        "has_feature_flags": False,
+        "has_editorconfig": False,
+        "has_type_checking": False,
+        "has_dr_runbook": False,
+        "has_incident_response_playbook": False,
+        "has_on_call_doc": False,
+        "has_dashboards_as_code": False,
     }
 
     candidate_paths: dict[str, list[str]] = {
-        "has_codeowners": [
-            "CODEOWNERS",
-            ".github/CODEOWNERS",
-            "docs/CODEOWNERS",
-        ],
+        "has_codeowners": ["CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"],
         "has_pr_template": [
             ".github/pull_request_template.md",
             ".github/PULL_REQUEST_TEMPLATE.md",
@@ -466,25 +557,102 @@ def _fetch_file_flags(repo: GithubRepo) -> dict[str, bool]:
             ".github/CONTRIBUTING.md",
             "docs/CONTRIBUTING.md",
         ],
-        "has_license": [
-            "LICENSE",
-            "LICENSE.md",
-            "LICENSE.txt",
-            "LICENCE",
-            "LICENCE.md",
+        "has_license": ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md"],
+        "has_readme": ["README.md", "README.rst", "README.txt", "README"],
+        "has_sbom": ["sbom.json", "sbom.spdx", "sbom.cyclonedx.json", "bom.json", "bom.xml"],
+        # Container
+        "has_dockerfile": ["Dockerfile", "dockerfile", "docker/Dockerfile"],
+        "has_docker_compose": [
+            "docker-compose.yml",
+            "docker-compose.yaml",
+            "compose.yml",
+            "compose.yaml",
         ],
-        "has_readme": [
-            "README.md",
-            "README.rst",
-            "README.txt",
-            "README",
+        "has_container_scanning": [
+            ".github/workflows/container-scan.yml",
+            ".trivy.yaml",
+            ".grype.yaml",
         ],
-        "has_sbom": [
-            "sbom.json",
-            "sbom.spdx",
-            "sbom.cyclonedx.json",
-            "bom.json",
-            "bom.xml",
+        # IaC
+        "has_iac_files": [
+            "main.tf",
+            "terraform/main.tf",
+            "Pulumi.yaml",
+            "pulumi/Pulumi.yaml",
+            "infrastructure/main.tf",
+        ],
+        # Monitoring / Observability
+        "has_monitoring_config": [
+            "prometheus.yml",
+            "monitoring/prometheus.yml",
+            "datadog.yaml",
+            ".datadog-ci.json",
+            "grafana/dashboards",
+        ],
+        "has_backup_config": ["backup.yml", "backup.yaml", "docs/backup-strategy.md"],
+        # Documentation
+        "has_changelog": ["CHANGELOG.md", "CHANGES.md", "HISTORY.md"],
+        "has_adr_directory": ["docs/adr", "adr", "docs/architecture/decisions"],
+        # Security tooling
+        "has_sast_config": [
+            ".semgrep.yml",
+            ".semgrep.yaml",
+            ".semgrep",
+            ".codeql",
+            ".github/codeql",
+        ],
+        "has_dast_config": [".zap/rules.tsv", "dast-config.yml", ".dast.yml"],
+        # API / process docs
+        "has_api_docs": [
+            "openapi.yaml",
+            "openapi.json",
+            "swagger.yaml",
+            "swagger.json",
+            "docs/api",
+        ],
+        "has_runbook": ["runbook.md", "docs/runbook.md", "RUNBOOK.md"],
+        "has_sla_document": ["SLA.md", "docs/SLA.md", "docs/sla.md"],
+        "has_migration_guide": ["MIGRATION.md", "docs/migration.md", "docs/MIGRATION.md"],
+        "has_deprecation_policy": ["DEPRECATION.md", "docs/deprecation.md", "docs/DEPRECATION.md"],
+        # Issue / collaboration
+        "has_issue_templates": [".github/ISSUE_TEMPLATE", ".github/ISSUE_TEMPLATE.md"],
+        # SDLC / process
+        "has_branching_strategy_doc": [
+            "docs/branching-strategy.md",
+            "docs/git-workflow.md",
+            "BRANCHING.md",
+        ],
+        "has_release_process_doc": ["docs/release-process.md", "RELEASING.md", "docs/RELEASING.md"],
+        "has_hotfix_process_doc": ["docs/hotfix-process.md", "docs/HOTFIX.md"],
+        "has_definition_of_done": ["docs/definition-of-done.md", "docs/DOD.md"],
+        "has_feature_flags": [
+            ".featureflags.yml",
+            "feature-flags.json",
+            "flagsmith.json",
+            "launchdarkly.yml",
+        ],
+        # Code quality
+        "has_editorconfig": [".editorconfig", ".prettierrc", ".prettierrc.json", ".prettierrc.yml"],
+        "has_type_checking": [
+            "mypy.ini",
+            ".mypy.ini",
+            "pyproject.toml",
+            "tsconfig.json",
+            "pyrightconfig.json",
+        ],
+        # DR / incident
+        "has_dr_runbook": ["docs/disaster-recovery.md", "docs/DR.md", "DR-RUNBOOK.md"],
+        "has_incident_response_playbook": [
+            "docs/incident-response.md",
+            "docs/INCIDENT.md",
+            "INCIDENT-RESPONSE.md",
+            "playbooks/incident.md",
+        ],
+        "has_on_call_doc": ["docs/on-call.md", "docs/oncall.md", "ON-CALL.md"],
+        "has_dashboards_as_code": [
+            "grafana/dashboards",
+            "dashboards/",
+            "monitoring/dashboards",
         ],
     }
 

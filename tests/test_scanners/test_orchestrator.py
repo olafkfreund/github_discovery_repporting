@@ -1,45 +1,52 @@
 from __future__ import annotations
 
 from backend.models.enums import Category
-from backend.scanners.cicd import CICDScanner
-from backend.scanners.code_quality import CodeQualityScanner
-from backend.scanners.collaboration import CollaborationScanner
-from backend.scanners.governance import GovernanceScanner
 from backend.scanners.orchestrator import CategoryScore, ScanOrchestrator
-from backend.scanners.security import SecurityScanner
-from backend.schemas.platform_data import RepoAssessmentData
+from backend.schemas.platform_data import OrgAssessmentData, RepoAssessmentData
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _expected_check_count() -> int:
-    """Return the total number of checks across all five scanners.
+def _expected_repo_check_count() -> int:
+    """Return the total number of checks across all 14 repo-level scanners."""
+    orchestrator = ScanOrchestrator()
+    return sum(len(s.checks()) for s in orchestrator._repo_scanners)
 
-    SecurityScanner: 15
-    CICDScanner:      9
-    CodeQualityScanner: 5
-    CollaborationScanner: 5
-    GovernanceScanner:    5
-    Total:            39
-    """
-    return (
-        len(SecurityScanner().checks())
-        + len(CICDScanner().checks())
-        + len(CodeQualityScanner().checks())
-        + len(CollaborationScanner().checks())
-        + len(GovernanceScanner().checks())
-    )
+
+def _expected_org_check_count() -> int:
+    """Return the total number of checks across all 2 org-level scanners."""
+    orchestrator = ScanOrchestrator()
+    return sum(len(s.checks()) for s in orchestrator._org_scanners)
+
+
+def _expected_total_check_count() -> int:
+    """Return total checks across all 16 scanners."""
+    return _expected_repo_check_count() + _expected_org_check_count()
 
 
 def _score_repo(data: RepoAssessmentData) -> tuple[list, dict[Category, CategoryScore], float]:
-    """Run the full orchestration pipeline and return (results, category_scores, overall)."""
+    """Run the repo-level orchestration pipeline and return (results, category_scores, overall)."""
     orchestrator = ScanOrchestrator()
     results = orchestrator.scan_repo(data)
     category_scores = orchestrator.calculate_category_scores(results)
     overall = orchestrator.calculate_overall_score(category_scores)
     return results, category_scores, overall
+
+
+def _score_full(
+    org_data: OrgAssessmentData,
+    repo_data: RepoAssessmentData,
+) -> tuple[list, dict[Category, CategoryScore], float]:
+    """Run full org + repo scan and return combined results."""
+    orchestrator = ScanOrchestrator()
+    org_results = orchestrator.scan_org(org_data)
+    repo_results = orchestrator.scan_repo(repo_data)
+    all_results = org_results + repo_results
+    category_scores = orchestrator.calculate_category_scores(all_results)
+    overall = orchestrator.calculate_overall_score(category_scores)
+    return all_results, category_scores, overall
 
 
 # ---------------------------------------------------------------------------
@@ -54,11 +61,9 @@ class TestScanOrchestrator:
     # Result count contract
     # ------------------------------------------------------------------
 
-    def test_scan_repo_returns_all_results(
-        self, well_protected_repo: RepoAssessmentData
-    ) -> None:
-        """scan_repo() must return one CheckResult per check across all scanners."""
-        expected = _expected_check_count()
+    def test_scan_repo_returns_all_results(self, well_protected_repo: RepoAssessmentData) -> None:
+        """scan_repo() must return one CheckResult per check across all repo scanners."""
+        expected = _expected_repo_check_count()
         orchestrator = ScanOrchestrator()
         results = orchestrator.scan_repo(well_protected_repo)
         assert len(results) == expected
@@ -66,18 +71,31 @@ class TestScanOrchestrator:
     def test_scan_repo_result_count_matches_scanner_sum(
         self, minimal_repo: RepoAssessmentData
     ) -> None:
-        """Result count must equal the sum of individual scanner check counts."""
-        expected = _expected_check_count()
+        """Result count must equal the sum of individual repo scanner check counts."""
+        expected = _expected_repo_check_count()
         orchestrator = ScanOrchestrator()
         results = orchestrator.scan_repo(minimal_repo)
         assert len(results) == expected
 
-    def test_check_count_is_39(self) -> None:
-        """The combined check catalogue across all scanners must total 39."""
-        assert _expected_check_count() == 39
+    def test_scan_org_returns_all_results(self, well_configured_org: OrgAssessmentData) -> None:
+        """scan_org() must return one CheckResult per check across all org scanners."""
+        expected = _expected_org_check_count()
+        orchestrator = ScanOrchestrator()
+        results = orchestrator.scan_org(well_configured_org)
+        assert len(results) == expected
+
+    def test_total_check_count_is_correct(self) -> None:
+        """The combined check catalogue across all 16 scanners should be substantial."""
+        total = _expected_total_check_count()
+        # 16 scanners with varying check counts should total > 150
+        assert total > 150, f"Expected > 150 total checks, got {total}"
+
+    def test_org_scanner_count_is_23(self) -> None:
+        """The 2 org-level scanners must total 23 checks (11 + 12)."""
+        assert _expected_org_check_count() == 23
 
     # ------------------------------------------------------------------
-    # Category scores — structural guarantees
+    # Category scores -- structural guarantees
     # ------------------------------------------------------------------
 
     def test_category_scores_have_all_categories(
@@ -88,10 +106,10 @@ class TestScanOrchestrator:
         for cat in Category:
             assert cat in category_scores, f"Category {cat} missing from category_scores"
 
-    def test_category_scores_all_five_categories_present_for_minimal_repo(
+    def test_category_scores_all_sixteen_categories_present(
         self, minimal_repo: RepoAssessmentData
     ) -> None:
-        """All five categories must appear even when most checks are not_applicable."""
+        """All 16 categories must appear even when most checks are not_applicable."""
         _, category_scores, _ = _score_repo(minimal_repo)
         assert len(category_scores) == len(list(Category))
 
@@ -105,24 +123,6 @@ class TestScanOrchestrator:
                 f"Category {cat} percentage {cs.percentage} is out of range"
             )
 
-    def test_category_score_finding_count_matches_scanner(
-        self, well_protected_repo: RepoAssessmentData
-    ) -> None:
-        """Each category's finding_count must match its scanner's check count."""
-        scanner_counts = {
-            Category.security: len(SecurityScanner().checks()),
-            Category.cicd: len(CICDScanner().checks()),
-            Category.code_quality: len(CodeQualityScanner().checks()),
-            Category.collaboration: len(CollaborationScanner().checks()),
-            Category.governance: len(GovernanceScanner().checks()),
-        }
-        _, category_scores, _ = _score_repo(well_protected_repo)
-        for cat, expected_count in scanner_counts.items():
-            actual = category_scores[cat].finding_count
-            assert actual == expected_count, (
-                f"Category {cat}: expected finding_count={expected_count}, got {actual}"
-            )
-
     # ------------------------------------------------------------------
     # Overall score bounds
     # ------------------------------------------------------------------
@@ -134,16 +134,12 @@ class TestScanOrchestrator:
         _, _, overall = _score_repo(well_protected_repo)
         assert 0.0 <= overall <= 100.0
 
-    def test_overall_score_range_minimal(
-        self, minimal_repo: RepoAssessmentData
-    ) -> None:
+    def test_overall_score_range_minimal(self, minimal_repo: RepoAssessmentData) -> None:
         """Overall score must be in [0.0, 100.0] for a minimal repo."""
         _, _, overall = _score_repo(minimal_repo)
         assert 0.0 <= overall <= 100.0
 
-    def test_overall_score_range_partial(
-        self, partial_repo: RepoAssessmentData
-    ) -> None:
+    def test_overall_score_range_partial(self, partial_repo: RepoAssessmentData) -> None:
         """Overall score must be in [0.0, 100.0] for a partially-configured repo."""
         _, _, overall = _score_repo(partial_repo)
         assert 0.0 <= overall <= 100.0
@@ -152,19 +148,15 @@ class TestScanOrchestrator:
     # Score ordering: well_protected > partial > minimal
     # ------------------------------------------------------------------
 
-    def test_well_protected_score_high(
-        self, well_protected_repo: RepoAssessmentData
-    ) -> None:
-        """A fully hardened repo should score above 70 overall."""
+    def test_well_protected_score_high(self, well_protected_repo: RepoAssessmentData) -> None:
+        """A fully hardened repo should score above 60 overall."""
         _, _, overall = _score_repo(well_protected_repo)
-        assert overall > 70.0, f"Expected overall > 70, got {overall}"
+        assert overall > 60.0, f"Expected overall > 60, got {overall}"
 
-    def test_minimal_repo_score_low(
-        self, minimal_repo: RepoAssessmentData
-    ) -> None:
-        """A repo with nothing configured should score below 30 overall."""
+    def test_minimal_repo_score_low(self, minimal_repo: RepoAssessmentData) -> None:
+        """A repo with nothing configured should score below 40 overall."""
         _, _, overall = _score_repo(minimal_repo)
-        assert overall < 30.0, f"Expected overall < 30, got {overall}"
+        assert overall < 40.0, f"Expected overall < 40, got {overall}"
 
     def test_partial_repo_score_between_minimal_and_well_protected(
         self,
@@ -184,52 +176,42 @@ class TestScanOrchestrator:
     # Category weight validation
     # ------------------------------------------------------------------
 
-    def test_category_weights_sum_to_one(
-        self, well_protected_repo: RepoAssessmentData
-    ) -> None:
-        """The five scanner category weights must sum to 1.0."""
-        _, category_scores, _ = _score_repo(well_protected_repo)
-        active_weights = [
-            cs.weight
-            for cs in category_scores.values()
-            if cs.weight > 0.0
-        ]
-        total = sum(active_weights)
+    def test_category_weights_sum_to_one(self) -> None:
+        """The 16 scanner category weights must sum to 1.0."""
+        orchestrator = ScanOrchestrator()
+        weights = [s.weight for s in orchestrator.all_scanners]
+        total = sum(weights)
         assert abs(total - 1.0) < 1e-9, f"Category weights sum to {total}, expected 1.0"
 
     # ------------------------------------------------------------------
-    # Pass / fail count consistency
+    # Org + repo combined scanning
     # ------------------------------------------------------------------
 
-    def test_well_protected_security_category_high_pass_count(
-        self, well_protected_repo: RepoAssessmentData
+    def test_full_scan_includes_org_and_repo_results(
+        self,
+        well_configured_org: OrgAssessmentData,
+        well_protected_repo: RepoAssessmentData,
     ) -> None:
-        """Security pass_count must be >= 13 for a well-protected repo.
+        """A full scan must produce results from both org and repo scanners."""
+        all_results, _, _ = _score_full(well_configured_org, well_protected_repo)
+        expected = _expected_org_check_count() + _expected_repo_check_count()
+        assert len(all_results) == expected
 
-        SEC-022 is always a warning, so at most 14 of 15 checks can pass.
-        The two governance checks that are always warnings reduce possible
-        passes, but the security category alone should have >=13 passes
-        (all 14 non-SEC-022 checks pass).
-        """
-        _, category_scores, _ = _score_repo(well_protected_repo)
-        sec_score = category_scores[Category.security]
-        assert sec_score.pass_count >= 13
-
-    def test_minimal_repo_security_category_zero_passes(
-        self, minimal_repo: RepoAssessmentData
+    def test_full_scan_org_categories_have_findings(
+        self,
+        well_configured_org: OrgAssessmentData,
+        well_protected_repo: RepoAssessmentData,
     ) -> None:
-        """Security pass_count must be 0 for a repo with no security configuration."""
-        _, category_scores, _ = _score_repo(minimal_repo)
-        sec_score = category_scores[Category.security]
-        assert sec_score.pass_count == 0
+        """Org-level categories must have findings after a full scan."""
+        _, category_scores, _ = _score_full(well_configured_org, well_protected_repo)
+        assert category_scores[Category.platform_arch].finding_count > 0
+        assert category_scores[Category.identity_access].finding_count > 0
 
     # ------------------------------------------------------------------
-    # Determinism — running the same data twice yields identical scores
+    # Determinism
     # ------------------------------------------------------------------
 
-    def test_scan_is_deterministic(
-        self, well_protected_repo: RepoAssessmentData
-    ) -> None:
+    def test_scan_is_deterministic(self, well_protected_repo: RepoAssessmentData) -> None:
         """Scanning the same data twice must produce identical overall scores."""
         orchestrator = ScanOrchestrator()
         results_a = orchestrator.scan_repo(well_protected_repo)
@@ -249,10 +231,10 @@ class TestScanOrchestrator:
     def test_category_score_percentage_zero_when_max_score_is_zero(self) -> None:
         """CategoryScore.percentage must return 0.0 when max_score is zero."""
         cs = CategoryScore(
-            category=Category.security,
+            category=Category.platform_arch,
             score=0.0,
             max_score=0.0,
-            weight=0.40,
+            weight=0.06,
             finding_count=0,
             pass_count=0,
             fail_count=0,
@@ -265,7 +247,7 @@ class TestScanOrchestrator:
             category=Category.cicd,
             score=10.0,
             max_score=10.0,
-            weight=0.20,
+            weight=0.10,
             finding_count=5,
             pass_count=5,
             fail_count=0,

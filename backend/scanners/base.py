@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.schemas.platform_data import RepoAssessmentData
+from backend.schemas.platform_data import OrgAssessmentData, RepoAssessmentData
 
 
 @dataclass
@@ -47,7 +47,7 @@ class CheckResult:
 
 
 class Scanner(Protocol):
-    """Structural protocol that every concrete scanner must satisfy."""
+    """Structural protocol that every repo-level scanner must satisfy."""
 
     category: Category
     weight: float  # category-level weight used by the orchestrator
@@ -58,4 +58,19 @@ class Scanner(Protocol):
 
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Evaluate all checks against *data* and return a result for each."""
+        ...
+
+
+class OrgScanner(Protocol):
+    """Structural protocol for org-level scanners."""
+
+    category: Category
+    weight: float
+
+    def checks(self) -> list[ScanCheck]:
+        """Return the full list of :class:`ScanCheck` objects this scanner owns."""
+        ...
+
+    def evaluate_org(self, data: OrgAssessmentData) -> list[CheckResult]:
+        """Evaluate all checks against org-level *data*."""
         ...

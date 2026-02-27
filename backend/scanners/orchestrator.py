@@ -3,13 +3,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.models.enums import Category
-from backend.scanners.base import CheckResult, Scanner
+from backend.scanners.base import CheckResult, OrgScanner, Scanner
 from backend.scanners.cicd import CICDScanner
 from backend.scanners.code_quality import CodeQualityScanner
 from backend.scanners.collaboration import CollaborationScanner
-from backend.scanners.governance import GovernanceScanner
-from backend.scanners.security import SecurityScanner
-from backend.schemas.platform_data import RepoAssessmentData
+from backend.scanners.compliance import ComplianceScanner
+from backend.scanners.container_security import ContainerSecurityScanner
+from backend.scanners.dast import DASTScanner
+from backend.scanners.dependencies import DependenciesScanner
+from backend.scanners.disaster_recovery import DisasterRecoveryScanner
+from backend.scanners.identity_access import IdentityAccessScanner
+from backend.scanners.migration import MigrationScanner
+from backend.scanners.monitoring import MonitoringScanner
+from backend.scanners.platform_arch import PlatformArchScanner
+from backend.scanners.repo_governance import RepoGovernanceScanner
+from backend.scanners.sast import SASTScanner
+from backend.scanners.sdlc_process import SDLCProcessScanner
+from backend.scanners.secrets_mgmt import SecretsMgmtScanner
+from backend.schemas.platform_data import OrgAssessmentData, RepoAssessmentData
 
 
 @dataclass
@@ -36,7 +47,7 @@ class CategoryScore:
 
     @property
     def percentage(self) -> float:
-        """Percentage score for this category (0–100).
+        """Percentage score for this category (0-100).
 
         Returns 0.0 when *max_score* is zero to avoid division by zero.
         """
@@ -46,39 +57,71 @@ class CategoryScore:
 
 
 class ScanOrchestrator:
-    """Coordinates all scanner instances and produces a unified assessment.
+    """Coordinates all 16 scanner instances and produces a unified assessment.
 
     Usage::
 
         orchestrator = ScanOrchestrator()
-        results = orchestrator.scan_repo(data)
-        category_scores = orchestrator.calculate_category_scores(results)
+
+        # Org-level scanning
+        org_results = orchestrator.scan_org(org_data)
+
+        # Repo-level scanning
+        repo_results = orchestrator.scan_repo(repo_data)
+
+        # Combine and score
+        all_results = org_results + repo_results
+        category_scores = orchestrator.calculate_category_scores(all_results)
         overall = orchestrator.calculate_overall_score(category_scores)
     """
 
     def __init__(self) -> None:
-        self._scanners: list[Scanner] = [
-            SecurityScanner(),
+        # Org-level scanners (implement evaluate_org)
+        self._org_scanners: list[OrgScanner] = [
+            PlatformArchScanner(),
+            IdentityAccessScanner(),
+        ]
+
+        # Repo-level scanners (implement evaluate)
+        self._repo_scanners: list[Scanner] = [
+            RepoGovernanceScanner(),
             CICDScanner(),
+            SecretsMgmtScanner(),
+            DependenciesScanner(),
+            SASTScanner(),
+            DASTScanner(),
+            ContainerSecurityScanner(),
             CodeQualityScanner(),
+            SDLCProcessScanner(),
+            ComplianceScanner(),
             CollaborationScanner(),
-            GovernanceScanner(),
+            DisasterRecoveryScanner(),
+            MonitoringScanner(),
+            MigrationScanner(),
         ]
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def scan_repo(self, data: RepoAssessmentData) -> list[CheckResult]:
-        """Run every scanner against *data* and return the combined results.
-
-        The order of results mirrors the order of scanners: security first,
-        then cicd, code_quality, collaboration, governance.
-        """
+    def scan_org(self, data: OrgAssessmentData) -> list[CheckResult]:
+        """Run all org-level scanners against *data*."""
         results: list[CheckResult] = []
-        for scanner in self._scanners:
+        for scanner in self._org_scanners:
+            results.extend(scanner.evaluate_org(data))
+        return results
+
+    def scan_repo(self, data: RepoAssessmentData) -> list[CheckResult]:
+        """Run every repo-level scanner against *data* and return the combined results."""
+        results: list[CheckResult] = []
+        for scanner in self._repo_scanners:
             results.extend(scanner.evaluate(data))
         return results
+
+    @property
+    def all_scanners(self) -> list:
+        """Return all scanners (org + repo) for weight/check count queries."""
+        return list(self._org_scanners) + list(self._repo_scanners)
 
     def calculate_category_scores(
         self,
@@ -88,20 +131,22 @@ class ScanOrchestrator:
 
         Each check's contribution to the earned score:
 
-        * ``passed``  → check weight × 1.0
-        * ``warning`` → check weight × 0.5
-        * all others  → 0.0
+        * ``passed``  -> check weight x 1.0
+        * ``warning`` -> check weight x 0.5
+        * all others  -> 0.0
 
         The *max_score* for a category is the sum of all check weights within
         that category (``not_applicable`` checks are excluded from max_score
         because they cannot be earned or lost).
         """
-        from backend.models.enums import CheckStatus  # local import avoids circular risk
+        from backend.models.enums import CheckStatus
 
         # Build scanner weight lookup keyed on category
-        scanner_weights: dict[Category, float] = {
-            s.category: s.weight for s in self._scanners
-        }
+        scanner_weights: dict[Category, float] = {}
+        for s in self._org_scanners:
+            scanner_weights[s.category] = s.weight
+        for s in self._repo_scanners:
+            scanner_weights[s.category] = s.weight
 
         # Initialise accumulators for every known category
         accumulators: dict[Category, dict] = {
@@ -121,13 +166,9 @@ class ScanOrchestrator:
             acc["finding_count"] += 1
 
             if result.status is CheckStatus.not_applicable:
-                # Skip — neither earned nor possible
                 continue
 
-            # Add to max_score for all applicable checks
             acc["max_score"] += result.check.weight
-
-            # Earned score (already computed by CheckResult.__post_init__)
             acc["score"] += result.score
 
             if result.status is CheckStatus.passed:
@@ -153,12 +194,11 @@ class ScanOrchestrator:
         self,
         category_scores: dict[Category, CategoryScore],
     ) -> float:
-        """Compute the overall weighted score on a 0–100 scale.
+        """Compute the overall weighted score on a 0-100 scale.
 
         Each category contributes ``category_percentage * category_weight`` to
-        the final score.  Categories with a zero *max_score* (i.e. every check
-        was ``not_applicable``) do not contribute to either the numerator or the
-        denominator so they cannot artificially deflate the overall result.
+        the final score.  Categories with a zero *max_score* do not contribute
+        to either the numerator or the denominator.
 
         Returns:
             A float in the range [0.0, 100.0], rounded to two decimal places.
@@ -168,7 +208,6 @@ class ScanOrchestrator:
 
         for cat_score in category_scores.values():
             if cat_score.max_score == 0.0:
-                # Entirely not_applicable category — exclude from weighting
                 continue
             weighted_sum += cat_score.percentage * cat_score.weight
             total_weight += cat_score.weight

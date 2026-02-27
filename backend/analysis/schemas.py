@@ -41,8 +41,12 @@ class Recommendation(BaseModel):
     title: str = Field(..., min_length=1, description="Short imperative title.")
     description: str = Field(..., min_length=1, description="Detailed remediation guidance.")
     category: str = Field(..., min_length=1, description="DevOps category label.")
-    effort: str = Field(..., pattern=r"^(low|medium|high)$", description="Implementation effort level.")
-    impact: str = Field(..., pattern=r"^(low|medium|high)$", description="Expected impact level if addressed.")
+    effort: str = Field(
+        ..., pattern=r"^(low|medium|high)$", description="Implementation effort level."
+    )
+    impact: str = Field(
+        ..., pattern=r"^(low|medium|high)$", description="Expected impact level if addressed."
+    )
     check_ids: list[str] = Field(default_factory=list, description="Related scanner check IDs.")
 
 
@@ -122,7 +126,9 @@ class AnalysisResult(BaseModel):
                                     operational threats.
     """
 
-    executive_summary: str = Field(..., min_length=1, description="3–5 paragraph executive summary.")
+    executive_summary: str = Field(
+        ..., min_length=1, description="3–5 paragraph executive summary."
+    )
     category_narratives: list[CategoryNarrative] = Field(
         default_factory=list,
         description="Per-category narratives.",

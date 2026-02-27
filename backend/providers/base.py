@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from backend.models.enums import Platform
-from backend.schemas.platform_data import NormalizedRepo, RepoAssessmentData
+from backend.schemas.platform_data import NormalizedRepo, OrgAssessmentData, RepoAssessmentData
 
 
 @runtime_checkable
@@ -65,5 +65,14 @@ class PlatformProvider(Protocol):
             A fully populated
             :class:`~backend.schemas.platform_data.RepoAssessmentData`
             instance ready for the analysis pipeline.
+        """
+        ...
+
+    async def get_org_assessment_data(self) -> OrgAssessmentData:
+        """Collect organisation-level assessment data.
+
+        Returns:
+            An :class:`~backend.schemas.platform_data.OrgAssessmentData`
+            instance with org-level security settings, membership info, etc.
         """
         ...

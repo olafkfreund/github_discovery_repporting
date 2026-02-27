@@ -8,11 +8,11 @@ from backend.schemas.platform_data import CIWorkflow, RepoAssessmentData, Workfl
 class CICDScanner:
     """Evaluates the maturity of the repository's CI/CD pipeline configuration.
 
-    Category weight: 0.20.
+    Category weight: 0.10 (expanded from 0.20 in the 16-domain architecture).
     """
 
     category: Category = Category.cicd
-    weight: float = 0.20
+    weight: float = 0.10
 
     _CHECKS: list[ScanCheck] = [
         ScanCheck(
@@ -72,7 +72,7 @@ class CICDScanner:
             description="Deployment environments should require manual approval gates before promotion.",
         ),
         ScanCheck(
-            check_id="CICD-010",
+            check_id="CICD-008",
             check_name="Pipeline success rate >95%",
             category=Category.cicd,
             severity=Severity.medium,
@@ -80,18 +80,54 @@ class CICDScanner:
             description="The recent pipeline success rate across all workflows must exceed 95%.",
         ),
         ScanCheck(
-            check_id="CICD-011",
+            check_id="CICD-009",
             check_name="Average build time <10 min",
             category=Category.cicd,
             severity=Severity.low,
             weight=0.5,
             description="The average CI run duration across recent workflow executions must be under 10 minutes.",
         ),
+        ScanCheck(
+            check_id="CICD-010",
+            check_name="Reusable workflows used",
+            category=Category.cicd,
+            severity=Severity.low,
+            weight=0.5,
+            description="Workflows should use reusable workflow calls to reduce duplication.",
+        ),
+        ScanCheck(
+            check_id="CICD-011",
+            check_name="Pipeline caching configured",
+            category=Category.cicd,
+            severity=Severity.low,
+            weight=0.5,
+            description="CI pipelines should use caching to speed up builds.",
+        ),
+        ScanCheck(
+            check_id="CICD-012",
+            check_name="Artifact signing enabled",
+            category=Category.cicd,
+            severity=Severity.medium,
+            weight=1.0,
+            description="Build artifacts should be signed to ensure integrity.",
+        ),
+        ScanCheck(
+            check_id="CICD-013",
+            check_name="Deployment rollback capability",
+            category=Category.cicd,
+            severity=Severity.medium,
+            weight=1.0,
+            description="Deployment workflows should include rollback capability.",
+        ),
+        ScanCheck(
+            check_id="CICD-014",
+            check_name="Multi-environment pipeline",
+            category=Category.cicd,
+            severity=Severity.medium,
+            weight=1.0,
+            description="Pipeline should support multiple environments (staging, production).",
+        ),
     ]
-
-    # ------------------------------------------------------------------
-    # Protocol implementation
-    # ------------------------------------------------------------------
 
     def checks(self) -> list[ScanCheck]:
         return list(self._CHECKS)
@@ -109,11 +145,20 @@ class CICDScanner:
                     check=check,
                     status=CheckStatus.passed,
                     detail=f"{len(workflows)} CI/CD workflow(s) detected.",
-                    evidence={"workflow_count": len(workflows), "names": [w.name for w in workflows]},
+                    evidence={
+                        "workflow_count": len(workflows),
+                        "names": [w.name for w in workflows],
+                    },
                 )
             )
         else:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No CI/CD workflow definitions were found."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No CI/CD workflow definitions were found.",
+                )
+            )
 
         # CICD-002
         check = check_map["CICD-002"]
@@ -128,9 +173,21 @@ class CICDScanner:
                 )
             )
         elif not workflows:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflows exist; cannot evaluate PR triggers."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflows exist; cannot evaluate PR triggers.",
+                )
+            )
         else:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflow triggers on pull_request events."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflow triggers on pull_request events.",
+                )
+            )
 
         # CICD-003
         check = check_map["CICD-003"]
@@ -145,9 +202,21 @@ class CICDScanner:
                 )
             )
         elif not workflows:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflows exist; cannot evaluate test coverage."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflows exist; cannot evaluate test coverage.",
+                )
+            )
         else:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflow includes a test-execution step."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflow includes a test-execution step.",
+                )
+            )
 
         # CICD-004
         check = check_map["CICD-004"]
@@ -162,9 +231,21 @@ class CICDScanner:
                 )
             )
         elif not workflows:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflows exist; cannot evaluate linting."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflows exist; cannot evaluate linting.",
+                )
+            )
         else:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflow includes a linting step."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflow includes a linting step.",
+                )
+            )
 
         # CICD-005
         check = check_map["CICD-005"]
@@ -179,9 +260,21 @@ class CICDScanner:
                 )
             )
         elif not workflows:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflows exist; cannot evaluate security scanning."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflows exist; cannot evaluate security scanning.",
+                )
+            )
         else:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflow includes a security-scanning step."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflow includes a security-scanning step.",
+                )
+            )
 
         # CICD-006
         check = check_map["CICD-006"]
@@ -196,32 +289,53 @@ class CICDScanner:
                 )
             )
         elif not workflows:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflows exist; cannot evaluate deployment automation."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflows exist; cannot evaluate deployment automation.",
+                )
+            )
         else:
-            results.append(CheckResult(check=check, status=CheckStatus.failed, detail="No workflow includes a deployment step."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflow includes a deployment step.",
+                )
+            )
 
-        # CICD-007  (always warning — environment-approval config not inspectable via basic API)
+        # CICD-007
         check = check_map["CICD-007"]
         results.append(
             CheckResult(
                 check=check,
                 status=CheckStatus.warning,
-                detail=(
-                    "Environment approval gates could not be verified via the API. "
-                    "Manual review recommended."
-                ),
+                detail="Environment approval gates could not be verified via the API. Manual review recommended.",
             )
         )
 
-        # CICD-010  (pipeline success rate)
-        check = check_map["CICD-010"]
+        # CICD-008 (pipeline success rate)
+        check = check_map["CICD-008"]
         all_runs: list[WorkflowRun] = [run for w in workflows for run in w.recent_runs]
         if not all_runs:
-            results.append(CheckResult(check=check, status=CheckStatus.not_applicable, detail="No recent workflow runs available for analysis."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.not_applicable,
+                    detail="No recent workflow runs available for analysis.",
+                )
+            )
         else:
             completed_runs = [r for r in all_runs if r.conclusion is not None]
             if not completed_runs:
-                results.append(CheckResult(check=check, status=CheckStatus.not_applicable, detail="No completed workflow runs found."))
+                results.append(
+                    CheckResult(
+                        check=check,
+                        status=CheckStatus.not_applicable,
+                        detail="No completed workflow runs found.",
+                    )
+                )
             else:
                 success_count = sum(1 for r in completed_runs if r.conclusion == "success")
                 rate = success_count / len(completed_runs)
@@ -259,11 +373,17 @@ class CICDScanner:
                         )
                     )
 
-        # CICD-011  (average build time)
-        check = check_map["CICD-011"]
+        # CICD-009 (average build time)
+        check = check_map["CICD-009"]
         timed_runs = [r for r in all_runs if r.duration_seconds is not None]
         if not timed_runs:
-            results.append(CheckResult(check=check, status=CheckStatus.not_applicable, detail="No duration data available for recent workflow runs."))
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.not_applicable,
+                    detail="No duration data available for recent workflow runs.",
+                )
+            )
         else:
             avg_seconds = sum(r.duration_seconds for r in timed_runs) / len(timed_runs)  # type: ignore[arg-type]
             avg_minutes = round(avg_seconds / 60, 1)
@@ -290,5 +410,72 @@ class CICDScanner:
                         evidence=evidence,
                     )
                 )
+
+        # CICD-010 (reusable workflows)
+        check = check_map["CICD-010"]
+        results.append(
+            CheckResult(
+                check=check,
+                status=CheckStatus.warning,
+                detail="Reusable workflow usage could not be verified automatically. Manual review recommended.",
+            )
+        )
+
+        # CICD-011 (pipeline caching)
+        check = check_map["CICD-011"]
+        results.append(
+            CheckResult(
+                check=check,
+                status=CheckStatus.warning,
+                detail="Pipeline caching configuration could not be verified automatically. Manual review recommended.",
+            )
+        )
+
+        # CICD-012 (artifact signing)
+        check = check_map["CICD-012"]
+        results.append(
+            CheckResult(
+                check=check,
+                status=CheckStatus.warning,
+                detail="Artifact signing could not be verified automatically. Manual review recommended.",
+            )
+        )
+
+        # CICD-013 (deployment rollback)
+        check = check_map["CICD-013"]
+        results.append(
+            CheckResult(
+                check=check,
+                status=CheckStatus.warning,
+                detail="Deployment rollback capability could not be verified automatically. Manual review recommended.",
+            )
+        )
+
+        # CICD-014 (multi-environment pipeline)
+        check = check_map["CICD-014"]
+        if deploy_workflows:
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.warning,
+                    detail="Deployment workflows exist but multi-environment staging could not be verified. Manual review recommended.",
+                )
+            )
+        elif not workflows:
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No workflows exist; cannot evaluate multi-environment pipeline.",
+                )
+            )
+        else:
+            results.append(
+                CheckResult(
+                    check=check,
+                    status=CheckStatus.failed,
+                    detail="No deployment workflows found; multi-environment pipeline not detected.",
+                )
+            )
 
         return results

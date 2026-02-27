@@ -95,6 +95,42 @@ class SecurityFeatures(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Organisation-level assessment models
+# ---------------------------------------------------------------------------
+
+
+class OrgMemberInfo(BaseModel):
+    """Membership statistics for an organisation."""
+
+    total_members: int = 0
+    admin_count: int = 0
+    mfa_enforced: bool = False
+    sso_enabled: bool = False
+
+
+class OrgSecuritySettings(BaseModel):
+    """Organisation-level security configuration."""
+
+    default_repo_permission: str | None = None
+    members_can_create_public_repos: bool = True
+    two_factor_requirement_enabled: bool = False
+    ip_allow_list_enabled: bool = False
+
+
+class OrgAssessmentData(BaseModel):
+    """All data collected at the organisation level, ready for scoring.
+
+    Used by org-level scanners (platform_arch, identity_access, etc.).
+    """
+
+    org_name: str
+    members: OrgMemberInfo | None = None
+    security_settings: OrgSecuritySettings | None = None
+    has_org_level_security_policy: bool = False
+    billing_plan: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Top-level assessment payload
 # ---------------------------------------------------------------------------
 
@@ -117,3 +153,37 @@ class RepoAssessmentData(BaseModel):
     has_readme: bool = False
     has_sbom: bool = False
     recent_prs: list[PullRequestInfo] = Field(default_factory=list)
+    # Expanded fields for 16-domain scanners
+    has_dockerfile: bool = False
+    has_docker_compose: bool = False
+    has_container_scanning: bool = False
+    has_iac_files: bool = False
+    has_monitoring_config: bool = False
+    has_backup_config: bool = False
+    has_changelog: bool = False
+    has_adr_directory: bool = False
+    has_sast_config: bool = False
+    has_dast_config: bool = False
+    has_api_docs: bool = False
+    has_runbook: bool = False
+    has_sla_document: bool = False
+    has_migration_guide: bool = False
+    has_deprecation_policy: bool = False
+    has_issue_templates: bool = False
+    has_discussions_enabled: bool = False
+    has_project_boards: bool = False
+    has_wiki: bool = False
+    has_branching_strategy_doc: bool = False
+    has_release_process_doc: bool = False
+    has_hotfix_process_doc: bool = False
+    has_definition_of_done: bool = False
+    has_feature_flags: bool = False
+    has_editorconfig: bool = False
+    has_type_checking: bool = False
+    has_dr_runbook: bool = False
+    has_incident_response_playbook: bool = False
+    has_on_call_doc: bool = False
+    has_dashboards_as_code: bool = False
+    container_base_images: list[str] = Field(default_factory=list)
+    iac_tool: str | None = None
+    test_coverage_percent: float | None = None

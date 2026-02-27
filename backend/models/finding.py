@@ -25,10 +25,10 @@ class Finding(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    scan_repo_id: Mapped[uuid.UUID] = mapped_column(
+    scan_repo_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("scan_repos.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     category: Mapped[Category] = mapped_column(nullable=False)
@@ -46,7 +46,7 @@ class Finding(UUIDMixin, TimestampMixin, Base):
         "Scan",
         back_populates="findings",
     )
-    scan_repo: Mapped[ScanRepo] = relationship(
+    scan_repo: Mapped[ScanRepo | None] = relationship(
         "ScanRepo",
         back_populates="findings",
     )

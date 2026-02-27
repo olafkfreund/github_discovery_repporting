@@ -31,13 +31,24 @@ class ScanStatus(str, Enum):
 
 
 class Category(str, Enum):
-    """Top-level finding / requirement categories."""
+    """Top-level finding / requirement categories (16 domains)."""
 
-    security = "security"
+    platform_arch = "platform_arch"
+    identity_access = "identity_access"
+    repo_governance = "repo_governance"
     cicd = "cicd"
+    secrets_mgmt = "secrets_mgmt"
+    dependencies = "dependencies"
+    sast = "sast"
+    dast = "dast"
+    container_security = "container_security"
     code_quality = "code_quality"
+    sdlc_process = "sdlc_process"
+    compliance = "compliance"
     collaboration = "collaboration"
-    governance = "governance"
+    disaster_recovery = "disaster_recovery"
+    monitoring = "monitoring"
+    migration = "migration"
 
 
 class Severity(str, Enum):

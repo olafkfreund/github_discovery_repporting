@@ -32,8 +32,9 @@ async def run_scan(scan_id: UUID, db_factory: async_sessionmaker) -> None:
        :class:`~backend.models.customer.PlatformConnection`.
     2. Transition status to ``scanning`` and record ``started_at``.
     3. Build the platform provider from the connection's encrypted credentials.
-    4. Enumerate all repositories visible to the provider.
-    5. For every repository:
+    4. Fetch org-level assessment data and run org-level scanners.
+    5. Enumerate all repositories visible to the provider.
+    6. For every repository:
 
        a. Fetch assessment data from the provider.
        b. Persist a :class:`~backend.models.scan.ScanRepo` row.
@@ -42,9 +43,9 @@ async def run_scan(scan_id: UUID, db_factory: async_sessionmaker) -> None:
        d. Persist a :class:`~backend.models.finding.Finding` row for every
           :class:`~backend.scanners.base.CheckResult`.
 
-    6. Compute per-category scores via the orchestrator and persist
+    7. Compute per-category scores via the orchestrator and persist
        :class:`~backend.models.finding.ScanScore` rows.
-    7. Transition status to ``completed`` and record ``completed_at`` plus
+    8. Transition status to ``completed`` and record ``completed_at`` plus
        ``total_repos``.
 
     Any unhandled exception causes the scan to transition to ``failed`` with
@@ -72,9 +73,7 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
     # Step 1: Load the Scan record together with its PlatformConnection.
     # ------------------------------------------------------------------
     result = await session.execute(
-        select(Scan)
-        .where(Scan.id == scan_id)
-        .options(selectinload(Scan.connection))
+        select(Scan).where(Scan.id == scan_id).options(selectinload(Scan.connection))
     )
     scan: Scan | None = result.scalar_one_or_none()
 
@@ -98,21 +97,57 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
 
         orchestrator = ScanOrchestrator()
 
-        # ------------------------------------------------------------------
-        # Step 4: List all repositories.
-        # ------------------------------------------------------------------
-        repos = await provider.list_repos()
-        logger.info(
-            "run_scan: scan %s — discovered %d repositories.", scan_id, len(repos)
-        )
-
-        # Accumulate all CheckResult objects across repos for scoring.
+        # Accumulate all CheckResult objects across org + repos for scoring.
         from backend.scanners.base import CheckResult  # noqa: PLC0415
 
         all_results: list[CheckResult] = []
 
         # ------------------------------------------------------------------
-        # Step 5: Per-repository assessment.
+        # Step 4: Org-level scanning phase (NEW).
+        # ------------------------------------------------------------------
+        try:
+            org_data = await provider.get_org_assessment_data()
+            org_results = orchestrator.scan_org(org_data)
+            all_results.extend(org_results)
+
+            # Persist org-level findings with scan_repo_id=None
+            for check_result in org_results:
+                finding = Finding(
+                    scan_id=scan.id,
+                    scan_repo_id=None,
+                    category=check_result.check.category,
+                    check_id=check_result.check.check_id,
+                    check_name=check_result.check.check_name,
+                    severity=check_result.check.severity,
+                    status=check_result.status,
+                    detail=check_result.detail or None,
+                    evidence=check_result.evidence,
+                    weight=check_result.check.weight,
+                    score=check_result.score,
+                )
+                session.add(finding)
+
+            await session.flush()
+            logger.info(
+                "run_scan: scan %s — %d org-level findings.",
+                scan_id,
+                len(org_results),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "run_scan: scan %s — org-level scanning failed: %s (continuing with repo scanning)",
+                scan_id,
+                exc,
+            )
+
+        # ------------------------------------------------------------------
+        # Step 5: List all repositories.
+        # ------------------------------------------------------------------
+        repos = await provider.list_repos()
+        logger.info("run_scan: scan %s — discovered %d repositories.", scan_id, len(repos))
+
+        # ------------------------------------------------------------------
+        # Step 6: Per-repository assessment.
         # ------------------------------------------------------------------
         for repo in repos:
             # a. Fetch assessment data.
@@ -131,7 +166,7 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
             # Flush so scan_repo.id is available for Finding foreign keys.
             await session.flush()
 
-            # c. Run all scanners against the assessment data.
+            # c. Run all repo-level scanners against the assessment data.
             results = orchestrator.scan_repo(assessment)
             all_results.extend(results)
 
@@ -156,7 +191,7 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
         await session.flush()
 
         # ------------------------------------------------------------------
-        # Step 6: Compute category scores and persist ScanScore rows.
+        # Step 7: Compute category scores and persist ScanScore rows.
         # ------------------------------------------------------------------
         category_scores = orchestrator.calculate_category_scores(all_results)
 
@@ -174,7 +209,7 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
             session.add(scan_score)
 
         # ------------------------------------------------------------------
-        # Step 7: Mark scan completed.
+        # Step 8: Mark scan completed.
         # ------------------------------------------------------------------
         scan.status = ScanStatus.completed
         scan.completed_at = datetime.now(tz=UTC)
