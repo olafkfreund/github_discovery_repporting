@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from uuid import UUID
 
@@ -179,7 +180,7 @@ async def add_connection(
     Returns:
         The newly created and refreshed ``PlatformConnection`` ORM instance.
     """
-    encrypted = secrets_service.encrypt(data.credentials)
+    encrypted = secrets_service.encrypt(json.dumps({"token": data.credentials}))
     connection = PlatformConnection(
         customer_id=customer_id,
         platform=data.platform,
@@ -246,7 +247,7 @@ async def update_connection(
     # Re-encrypt credentials if new plaintext was provided.
     if "credentials" in update_data:
         update_data["credentials_encrypted"] = secrets_service.encrypt(
-            update_data.pop("credentials")
+            json.dumps({"token": update_data.pop("credentials")})
         )
 
     for field, value in update_data.items():
