@@ -457,14 +457,13 @@ def _fetch_security_features(repo: GithubRepo) -> SecurityFeatures:
 
     # Secret scanning and code scanning require elevated token scopes.
     # We attempt to query them but gracefully degrade on 403/404.
+    # Only fetch the first page to check if the feature is enabled — avoid
+    # paginating through hundreds of alerts just for a boolean check.
     try:
-        alerts = list(repo.get_secret_scanning_alerts())
-        # If we can list alerts the feature is enabled (even if zero alerts).
+        repo.get_secret_scanning_alerts().get_page(0)
         secret_scanning = True
-        _ = alerts  # consumed for the side-effect check
     except GithubException as exc:
         if exc.status == 404:
-            # Feature not enabled on this repo.
             secret_scanning = False
         else:
             logger.debug(
@@ -476,9 +475,8 @@ def _fetch_security_features(repo: GithubRepo) -> SecurityFeatures:
         pass
 
     try:
-        alerts = list(repo.get_codescan_alerts())
+        repo.get_codescan_alerts().get_page(0)
         code_scanning = True
-        _ = alerts
     except GithubException as exc:
         if exc.status == 404:
             code_scanning = False

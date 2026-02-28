@@ -25,6 +25,9 @@
             gobject-introspection
             libffi
             zlib
+            fontconfig
+            freetype
+            harfbuzz
 
             # Node.js for frontend
             nodejs_22
@@ -48,6 +51,9 @@
               pkgs.gobject-introspection
               pkgs.libffi
               pkgs.zlib
+              pkgs.fontconfig
+              pkgs.freetype
+              pkgs.harfbuzz
             ]}:$LD_LIBRARY_PATH"
           '';
         };
