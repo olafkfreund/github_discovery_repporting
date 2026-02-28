@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import BranchProtection, RepoAssessmentData
 
 
-class RepoGovernanceScanner:
+class RepoGovernanceScanner(BaseScanner):
     """Evaluates repository governance practices including branch protection,
     code ownership, and merge hygiene.
 
@@ -24,7 +24,7 @@ class RepoGovernanceScanner:
     # Check catalogue
     # ------------------------------------------------------------------
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="REPO-001",
             check_name="Default branch protected",
@@ -124,55 +124,43 @@ class RepoGovernanceScanner:
                 "restricted to maintain a clean and auditable commit history."
             ),
         ),
-    ]
+    )
 
     # ------------------------------------------------------------------
     # Protocol implementation
     # ------------------------------------------------------------------
 
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of repository governance checks."""
-        return list(self._CHECKS)
-
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Run every REPO-xxx check against *data* and return one result each."""
         bp: BranchProtection | None = data.branch_protection
         results: list[CheckResult] = []
-        check_map = {c.check_id: c for c in self._CHECKS}
 
         # ---- Branch-protection checks (REPO-001 – REPO-007) ----------
 
         # REPO-001
-        check = check_map["REPO-001"]
         if bp is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-001"],
                     status=CheckStatus.failed,
                     detail="No branch-protection data found.",
                 )
             )
-        elif bp.is_protected:
-            results.append(
-                CheckResult(
-                    check=check, status=CheckStatus.passed, detail="Default branch is protected."
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="Default branch protection is not enabled.",
+                self._bool_check(
+                    "REPO-001",
+                    bp.is_protected,
+                    passed="Default branch is protected.",
+                    failed="Default branch protection is not enabled.",
                 )
             )
 
         # REPO-002
-        check = check_map["REPO-002"]
         if bp is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-002"],
                     status=CheckStatus.failed,
                     detail="No branch-protection data found.",
                 )
@@ -180,7 +168,7 @@ class RepoGovernanceScanner:
         elif bp.required_reviews >= 1:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-002"],
                     status=CheckStatus.passed,
                     detail=f"Required approvals: {bp.required_reviews}.",
                     evidence={"required_reviews": bp.required_reviews},
@@ -189,7 +177,7 @@ class RepoGovernanceScanner:
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-002"],
                     status=CheckStatus.failed,
                     detail="No PR reviews are required before merging.",
                     evidence={"required_reviews": bp.required_reviews},
@@ -197,11 +185,10 @@ class RepoGovernanceScanner:
             )
 
         # REPO-003
-        check = check_map["REPO-003"]
         if bp is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-003"],
                     status=CheckStatus.failed,
                     detail="No branch-protection data found.",
                 )
@@ -209,7 +196,7 @@ class RepoGovernanceScanner:
         elif bp.required_reviews >= 2:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-003"],
                     status=CheckStatus.passed,
                     detail=f"Required approvals: {bp.required_reviews}.",
                     evidence={"required_reviews": bp.required_reviews},
@@ -218,7 +205,7 @@ class RepoGovernanceScanner:
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-003"],
                     status=CheckStatus.failed,
                     detail=f"Only {bp.required_reviews} approval(s) required; minimum is 2.",
                     evidence={"required_reviews": bp.required_reviews},
@@ -226,183 +213,103 @@ class RepoGovernanceScanner:
             )
 
         # REPO-004
-        check = check_map["REPO-004"]
         if bp is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-004"],
                     status=CheckStatus.failed,
                     detail="No branch-protection data found.",
                 )
             )
-        elif bp.dismiss_stale_reviews:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Stale reviews are dismissed when new commits are pushed.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="Stale reviews are not dismissed when new commits are pushed to an open PR.",
+                self._bool_check(
+                    "REPO-004",
+                    bp.dismiss_stale_reviews,
+                    passed="Stale reviews are dismissed when new commits are pushed.",
+                    failed="Stale reviews are not dismissed when new commits are pushed to an open PR.",
                 )
             )
 
         # REPO-005
-        check = check_map["REPO-005"]
         if bp is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-005"],
                     status=CheckStatus.failed,
                     detail="No branch-protection data found.",
                 )
             )
-        elif bp.enforce_admins:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Branch-protection rules are enforced for administrators.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="Branch-protection rules are not enforced for repository administrators.",
+                self._bool_check(
+                    "REPO-005",
+                    bp.enforce_admins,
+                    passed="Branch-protection rules are enforced for administrators.",
+                    failed="Branch-protection rules are not enforced for repository administrators.",
                 )
             )
 
         # REPO-006
-        check = check_map["REPO-006"]
         if bp is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-006"],
                     status=CheckStatus.failed,
                     detail="No branch-protection data found.",
                 )
             )
-        elif not bp.allow_force_pushes:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Force pushes to the default branch are disabled.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="Force pushes to the default branch are permitted.",
+                self._bool_check(
+                    "REPO-006",
+                    not bp.allow_force_pushes,
+                    passed="Force pushes to the default branch are disabled.",
+                    failed="Force pushes to the default branch are permitted.",
                 )
             )
 
         # REPO-007
-        check = check_map["REPO-007"]
         if bp is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["REPO-007"],
                     status=CheckStatus.failed,
                     detail="No branch-protection data found.",
                 )
             )
-        elif bp.require_signed_commits:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Signed commits are required on the default branch.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="Signed commits are not required.",
+                self._bool_check(
+                    "REPO-007",
+                    bp.require_signed_commits,
+                    passed="Signed commits are required on the default branch.",
+                    failed="Signed commits are not required.",
                 )
             )
 
         # ---- Structural governance checks (REPO-008 – REPO-012) ------
 
         # REPO-008
-        check = check_map["REPO-008"]
-        if data.has_codeowners:
-            results.append(
-                CheckResult(
-                    check=check, status=CheckStatus.passed, detail="A CODEOWNERS file is present."
-                )
+        results.append(
+            self._bool_check(
+                "REPO-008",
+                data.has_codeowners,
+                passed="A CODEOWNERS file is present.",
+                failed="No CODEOWNERS file was found. Add one to auto-assign reviewers based on code ownership.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No CODEOWNERS file was found. Add one to auto-assign reviewers based on code ownership.",
-                )
-            )
+        )
 
         # REPO-009  (branch naming convention — cannot verify via standard API)
-        check = check_map["REPO-009"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Branch naming convention enforcement cannot be verified automatically via the "
-                    "repository API. Manual review of the branching strategy and any ruleset "
-                    "configurations is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("REPO-009", "Branch naming convention enforcement"))
 
         # REPO-010  (tag protection rules — cannot verify via standard API)
-        check = check_map["REPO-010"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Tag protection rule configuration cannot be verified automatically via the "
-                    "standard API. Manual review of the repository's tag protection settings is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("REPO-010", "Tag protection rule configuration"))
 
         # REPO-011  (auto-delete head branches — cannot verify via standard API)
-        check = check_map["REPO-011"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Automatic head-branch deletion after merge cannot be confirmed via the standard "
-                    "API. Manual review of the repository's general settings is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("REPO-011", "Automatic head-branch deletion after merge"))
 
         # REPO-012  (merge strategy restricted — cannot verify via standard API)
-        check = check_map["REPO-012"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Allowed merge strategies (merge commit, squash, rebase) cannot be enumerated "
-                    "via the standard API. Manual review of the repository's merge settings is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("REPO-012", "Allowed merge strategies (merge commit, squash, rebase)"))
 
         return results

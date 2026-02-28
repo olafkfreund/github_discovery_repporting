@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import RepoAssessmentData
 
 
-class ContainerSecurityScanner:
+class ContainerSecurityScanner(BaseScanner):
     """Evaluates container security practices for repositories that use Docker.
 
     When no Dockerfile is detected (CNTR-001 fails), all subsequent container
@@ -17,7 +17,7 @@ class ContainerSecurityScanner:
     category: Category = Category.container_security
     weight: float = 0.06
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="CNTR-001",
             check_name="Dockerfile present",
@@ -114,11 +114,7 @@ class ContainerSecurityScanner:
             weight=0.5,
             description="A runtime security policy (e.g. seccomp, AppArmor, Pod Security Standards) must be defined.",
         ),
-    ]
-
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of container security checks."""
-        return list(self._CHECKS)
+    )
 
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Run every CNTR-xxx check against *data* and return one result each.
@@ -127,42 +123,31 @@ class ContainerSecurityScanner:
         are marked ``not_applicable`` since there is no container surface area
         to evaluate.
         """
-        check_map = {c.check_id: c for c in self._CHECKS}
         results: list[CheckResult] = []
 
         # CNTR-001: Dockerfile present
-        check = check_map["CNTR-001"]
         has_dockerfile = data.has_dockerfile
-        if has_dockerfile:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A Dockerfile is present in the repository.",
-                )
+        results.append(
+            self._bool_check(
+                "CNTR-001",
+                has_dockerfile,
+                passed="A Dockerfile is present in the repository.",
+                failed="No Dockerfile was detected. Container security checks are not applicable.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No Dockerfile was detected. Container security checks are not applicable.",
-                )
-            )
+        )
 
         # All remaining checks are not_applicable when no Dockerfile exists.
         _na_detail = "Not applicable: no Dockerfile detected in this repository."
 
         # CNTR-002: Base image from trusted registry
-        check = check_map["CNTR-002"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-002"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-002"],
                     status=CheckStatus.warning,
                     detail=(
                         "Base image registry trust could not be verified automatically. "
@@ -172,15 +157,14 @@ class ContainerSecurityScanner:
             )
 
         # CNTR-003: Base image pinned by digest
-        check = check_map["CNTR-003"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-003"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-003"],
                     status=CheckStatus.warning,
                     detail=(
                         "Base image digest pinning could not be verified automatically. "
@@ -190,15 +174,14 @@ class ContainerSecurityScanner:
             )
 
         # CNTR-004: Multi-stage build used
-        check = check_map["CNTR-004"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-004"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-004"],
                     status=CheckStatus.warning,
                     detail=(
                         "Multi-stage build usage could not be verified automatically. "
@@ -208,15 +191,14 @@ class ContainerSecurityScanner:
             )
 
         # CNTR-005: No root user in container
-        check = check_map["CNTR-005"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-005"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-005"],
                     status=CheckStatus.warning,
                     detail=(
                         "Container user context could not be verified automatically. "
@@ -226,38 +208,29 @@ class ContainerSecurityScanner:
             )
 
         # CNTR-006: Image scanning in pipeline
-        check = check_map["CNTR-006"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
-            )
-        elif data.has_container_scanning:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Container image scanning is configured in the CI/CD pipeline.",
-                )
+                CheckResult(check=self._check_map["CNTR-006"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No container image scanning was detected in the CI/CD pipeline.",
+                self._bool_check(
+                    "CNTR-006",
+                    data.has_container_scanning,
+                    passed="Container image scanning is configured in the CI/CD pipeline.",
+                    failed="No container image scanning was detected in the CI/CD pipeline.",
                 )
             )
 
         # CNTR-007: No secrets in Dockerfile
-        check = check_map["CNTR-007"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-007"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-007"],
                     status=CheckStatus.warning,
                     detail=(
                         "Secret embedding in the Dockerfile could not be verified automatically. "
@@ -267,15 +240,14 @@ class ContainerSecurityScanner:
             )
 
         # CNTR-008: Health check defined
-        check = check_map["CNTR-008"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-008"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-008"],
                     status=CheckStatus.warning,
                     detail=(
                         "Dockerfile HEALTHCHECK instruction could not be verified automatically. "
@@ -285,15 +257,14 @@ class ContainerSecurityScanner:
             )
 
         # CNTR-009: Read-only filesystem
-        check = check_map["CNTR-009"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-009"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-009"],
                     status=CheckStatus.warning,
                     detail=(
                         "Read-only root filesystem configuration could not be verified automatically. "
@@ -303,15 +274,14 @@ class ContainerSecurityScanner:
             )
 
         # CNTR-010: Resource limits defined (use docker-compose as a proxy signal)
-        check = check_map["CNTR-010"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-010"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         elif data.has_docker_compose:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-010"],
                     status=CheckStatus.warning,
                     detail=(
                         "A docker-compose file is present. "
@@ -322,7 +292,7 @@ class ContainerSecurityScanner:
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-010"],
                     status=CheckStatus.warning,
                     detail=(
                         "Resource limit definitions could not be verified automatically. "
@@ -332,15 +302,14 @@ class ContainerSecurityScanner:
             )
 
         # CNTR-011: Container signing enabled
-        check = check_map["CNTR-011"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-011"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-011"],
                     status=CheckStatus.warning,
                     detail=(
                         "Container image signing could not be verified automatically. "
@@ -350,15 +319,14 @@ class ContainerSecurityScanner:
             )
 
         # CNTR-012: Runtime security policy defined
-        check = check_map["CNTR-012"]
         if not has_dockerfile:
             results.append(
-                CheckResult(check=check, status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(check=self._check_map["CNTR-012"], status=CheckStatus.not_applicable, detail=_na_detail)
             )
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CNTR-012"],
                     status=CheckStatus.warning,
                     detail=(
                         "Runtime security policy configuration could not be verified automatically. "

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import RepoAssessmentData
 
 
-class SASTScanner:
+class SASTScanner(BaseScanner):
     """Evaluates Static Application Security Testing (SAST) practices.
 
     Category weight: 0.06.
@@ -14,7 +14,7 @@ class SASTScanner:
     category: Category = Category.sast
     weight: float = 0.06
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="SAST-001",
             check_name="SAST tool configured",
@@ -95,43 +95,28 @@ class SASTScanner:
             weight=0.5,
             description="A documented process or suppression mechanism must exist for managing SAST false positives.",
         ),
-    ]
-
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of SAST checks."""
-        return list(self._CHECKS)
+    )
 
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Run every SAST-xxx check against *data* and return one result each."""
-        check_map = {c.check_id: c for c in self._CHECKS}
         results: list[CheckResult] = []
 
         # SAST-001: SAST tool configured
-        check = check_map["SAST-001"]
-        if data.has_sast_config:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A SAST configuration file is present in the repository.",
-                )
+        results.append(
+            self._bool_check(
+                "SAST-001",
+                data.has_sast_config,
+                passed="A SAST configuration file is present in the repository.",
+                failed="No SAST configuration file was detected (e.g. .semgrep.yml, sonar-project.properties).",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No SAST configuration file was detected (e.g. .semgrep.yml, sonar-project.properties).",
-                )
-            )
+        )
 
         # SAST-002: SAST runs in CI pipeline
-        check = check_map["SAST-002"]
         workflows_with_security = [wf for wf in data.ci_workflows if wf.has_security_scan]
         if workflows_with_security:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["SAST-002"],
                     status=CheckStatus.passed,
                     detail=f"{len(workflows_with_security)} CI workflow(s) include a security scan step.",
                     evidence={"workflows": [wf.name for wf in workflows_with_security]},
@@ -140,7 +125,7 @@ class SASTScanner:
         elif not data.ci_workflows:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["SAST-002"],
                     status=CheckStatus.not_applicable,
                     detail="No CI workflows found in the repository.",
                 )
@@ -148,7 +133,7 @@ class SASTScanner:
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["SAST-002"],
                     status=CheckStatus.failed,
                     detail="No CI workflow includes a security scan step.",
                     evidence={"workflow_count": len(data.ci_workflows)},
@@ -156,122 +141,44 @@ class SASTScanner:
             )
 
         # SAST-003: CodeQL/Semgrep analysis enabled (platform code scanning)
-        check = check_map["SAST-003"]
         sec = data.security
         if sec is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["SAST-003"],
                     status=CheckStatus.not_applicable,
                     detail="No security feature data available.",
                 )
             )
-        elif sec.code_scanning_enabled:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Platform code scanning (e.g. CodeQL) is enabled for this repository.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="Platform code scanning is not enabled. Consider enabling CodeQL or Semgrep.",
+                self._bool_check(
+                    "SAST-003",
+                    sec.code_scanning_enabled,
+                    passed="Platform code scanning (e.g. CodeQL) is enabled for this repository.",
+                    failed="Platform code scanning is not enabled. Consider enabling CodeQL or Semgrep.",
                 )
             )
 
         # SAST-004: No critical SAST findings (cannot verify directly via API)
-        check = check_map["SAST-004"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Critical SAST findings could not be verified automatically. "
-                    "Manual review of SAST tool output is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("SAST-004", "Critical SAST findings"))
 
         # SAST-005: No high SAST findings (cannot verify directly via API)
-        check = check_map["SAST-005"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "High-severity SAST findings could not be verified automatically. "
-                    "Manual review of SAST tool output is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("SAST-005", "High-severity SAST findings"))
 
         # SAST-006: Custom rules defined (cannot verify directly via API)
-        check = check_map["SAST-006"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Custom SAST rule definitions could not be verified automatically. "
-                    "Confirm that custom rules or policies extend the default rule set."
-                ),
-            )
-        )
+        results.append(self._manual_review("SAST-006", "Custom SAST rule definitions"))
 
         # SAST-007: SAST results block merge on critical (cannot verify directly via API)
-        check = check_map["SAST-007"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Whether SAST results are configured as required status checks could not be "
-                    "verified automatically. Confirm that critical SAST findings block PR merges."
-                ),
-            )
-        )
+        results.append(self._manual_review("SAST-007", "Whether SAST results are configured as required status checks"))
 
         # SAST-008: Incremental scanning enabled (cannot verify directly via API)
-        check = check_map["SAST-008"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Incremental SAST scanning configuration could not be verified automatically. "
-                    "Confirm that PR-scoped scanning is enabled for faster feedback cycles."
-                ),
-            )
-        )
+        results.append(self._manual_review("SAST-008", "Incremental SAST scanning configuration"))
 
         # SAST-009: Multi-language coverage (cannot verify directly via API)
-        check = check_map["SAST-009"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "SAST language coverage could not be verified automatically. "
-                    "Confirm that all primary repository languages are covered by the configured tools."
-                ),
-            )
-        )
+        results.append(self._manual_review("SAST-009", "SAST language coverage"))
 
         # SAST-010: False positive management (cannot verify directly via API)
-        check = check_map["SAST-010"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "False positive management processes could not be verified automatically. "
-                    "Confirm that suppression mechanisms and review workflows are documented."
-                ),
-            )
-        )
+        results.append(self._manual_review("SAST-010", "False positive management processes"))
 
         return results

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import RepoAssessmentData
 
 
-class ComplianceScanner:
+class ComplianceScanner(BaseScanner):
     """Evaluates compliance and audit readiness for a repository.
 
     Category weight: 0.06.
@@ -14,7 +14,7 @@ class ComplianceScanner:
     category: Category = Category.compliance
     weight: float = 0.06
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="COMP-001",
             check_name="LICENSE file present",
@@ -103,41 +103,26 @@ class ComplianceScanner:
             weight=1.0,
             description="Compliance evidence (logs, reports, artefacts) must be collected automatically as part of the pipeline.",
         ),
-    ]
-
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of compliance checks."""
-        return list(self._CHECKS)
+    )
 
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Run every COMP-xxx check against *data* and return one result each."""
-        check_map = {c.check_id: c for c in self._CHECKS}
         results: list[CheckResult] = []
 
         # COMP-001: LICENSE file present
-        check = check_map["COMP-001"]
-        if data.has_license:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A LICENSE file is present in the repository.",
-                )
+        results.append(
+            self._bool_check(
+                "COMP-001",
+                data.has_license,
+                passed="A LICENSE file is present in the repository.",
+                failed="No LICENSE file was found. Add a LICENSE to declare distribution terms.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No LICENSE file was found. Add a LICENSE to declare distribution terms.",
-                )
-            )
+        )
 
         # COMP-002: Audit logging available (cannot verify directly via API)
-        check = check_map["COMP-002"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["COMP-002"],
                 status=CheckStatus.warning,
                 detail=(
                     "Audit logging configuration could not be verified automatically. "
@@ -147,10 +132,9 @@ class ComplianceScanner:
         )
 
         # COMP-003: Compliance frameworks assigned (cannot verify directly via API)
-        check = check_map["COMP-003"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["COMP-003"],
                 status=CheckStatus.warning,
                 detail=(
                     "Compliance framework assignments could not be verified automatically. "
@@ -160,38 +144,29 @@ class ComplianceScanner:
         )
 
         # COMP-004: Security policy present
-        check = check_map["COMP-004"]
         sec = data.security
         if sec is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["COMP-004"],
                     status=CheckStatus.not_applicable,
                     detail="No security feature data available.",
                 )
             )
-        elif sec.has_security_policy:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A security policy file is present.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No security policy file (e.g. SECURITY.md) was found.",
+                self._bool_check(
+                    "COMP-004",
+                    sec.has_security_policy,
+                    passed="A security policy file is present.",
+                    failed="No security policy file (e.g. SECURITY.md) was found.",
                 )
             )
 
         # COMP-005: Data classification labels used (cannot verify directly via API)
-        check = check_map["COMP-005"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["COMP-005"],
                 status=CheckStatus.warning,
                 detail=(
                     "Data classification label usage could not be verified automatically. "
@@ -201,10 +176,9 @@ class ComplianceScanner:
         )
 
         # COMP-006: Data retention policy defined (cannot verify directly via API)
-        check = check_map["COMP-006"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["COMP-006"],
                 status=CheckStatus.warning,
                 detail=(
                     "Data retention policy definitions could not be verified automatically. "
@@ -214,29 +188,19 @@ class ComplianceScanner:
         )
 
         # COMP-007: Change management process documented (changelog as proxy)
-        check = check_map["COMP-007"]
-        if data.has_changelog:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A changelog file is present, providing a record of significant changes.",
-                )
+        results.append(
+            self._bool_check(
+                "COMP-007",
+                data.has_changelog,
+                passed="A changelog file is present, providing a record of significant changes.",
+                failed="No changelog was detected. Add a CHANGELOG to maintain an audit trail of changes.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No changelog was detected. Add a CHANGELOG to maintain an audit trail of changes.",
-                )
-            )
+        )
 
         # COMP-008: Vendor risk assessment available (cannot verify directly via API)
-        check = check_map["COMP-008"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["COMP-008"],
                 status=CheckStatus.warning,
                 detail=(
                     "Vendor risk assessment availability could not be verified automatically. "
@@ -246,10 +210,9 @@ class ComplianceScanner:
         )
 
         # COMP-009: Compliance scanning in pipeline (cannot verify directly via API)
-        check = check_map["COMP-009"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["COMP-009"],
                 status=CheckStatus.warning,
                 detail=(
                     "Compliance scanning pipeline integration could not be verified automatically. "
@@ -259,10 +222,9 @@ class ComplianceScanner:
         )
 
         # COMP-010: Regulatory mapping documented (cannot verify directly via API)
-        check = check_map["COMP-010"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["COMP-010"],
                 status=CheckStatus.warning,
                 detail=(
                     "Regulatory control mapping could not be verified automatically. "
@@ -272,10 +234,9 @@ class ComplianceScanner:
         )
 
         # COMP-011: Evidence collection automated (cannot verify directly via API)
-        check = check_map["COMP-011"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["COMP-011"],
                 status=CheckStatus.warning,
                 detail=(
                     "Automated evidence collection could not be verified automatically. "

@@ -59,7 +59,6 @@ class AnalysisClient:
     """
 
     def __init__(self, api_key: str) -> None:
-        self._api_key: str = api_key
         if api_key:
             self._client: anthropic.AsyncAnthropic | None = anthropic.AsyncAnthropic(
                 api_key=api_key

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import PullRequestInfo, RepoAssessmentData
 
 
-class CollaborationScanner:
+class CollaborationScanner(BaseScanner):
     """Evaluates repository practices that support healthy team collaboration.
 
     Category weight: 0.04 (simplified for 16-domain architecture; many checks
@@ -15,7 +15,7 @@ class CollaborationScanner:
     category: Category = Category.collaboration
     weight: float = 0.04
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="COLLAB-001",
             check_name="Issue templates configured",
@@ -72,101 +72,67 @@ class CollaborationScanner:
             weight=0.5,
             description="A process for managing stale issues and PRs should be in place.",
         ),
-    ]
-
-    def checks(self) -> list[ScanCheck]:
-        return list(self._CHECKS)
+    )
 
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
-        check_map = {c.check_id: c for c in self._CHECKS}
         results: list[CheckResult] = []
 
         # COLLAB-001
-        check = check_map["COLLAB-001"]
-        if data.has_issue_templates:
-            results.append(
-                CheckResult(
-                    check=check, status=CheckStatus.passed, detail="Issue templates are configured."
-                )
-            )
-        else:
-            results.append(
-                CheckResult(
-                    check=check, status=CheckStatus.failed, detail="No issue templates found."
-                )
-            )
-
-        # COLLAB-002
-        check = check_map["COLLAB-002"]
-        if data.has_discussions_enabled:
-            results.append(
-                CheckResult(
-                    check=check, status=CheckStatus.passed, detail="Discussion board is enabled."
-                )
-            )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.warning,
-                    detail="Discussion board status could not be verified. Manual review recommended.",
-                )
-            )
-
-        # COLLAB-003
-        check = check_map["COLLAB-003"]
         results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail="Team notification configuration could not be verified automatically. Manual review recommended.",
+            self._bool_check(
+                "COLLAB-001",
+                data.has_issue_templates,
+                passed="Issue templates are configured.",
+                failed="No issue templates found.",
             )
         )
 
-        # COLLAB-004
-        check = check_map["COLLAB-004"]
-        if data.has_project_boards:
+        # COLLAB-002
+        if data.has_discussions_enabled:
             results.append(
                 CheckResult(
-                    check=check, status=CheckStatus.passed, detail="Project boards are in use."
+                    check=self._check_map["COLLAB-002"],
+                    status=CheckStatus.passed,
+                    detail="Discussion board is enabled.",
                 )
             )
         else:
+            results.append(self._manual_review("COLLAB-002", "Discussion board status"))
+
+        # COLLAB-003
+        results.append(self._manual_review("COLLAB-003", "Team notification configuration"))
+
+        # COLLAB-004
+        if data.has_project_boards:
             results.append(
                 CheckResult(
-                    check=check,
-                    status=CheckStatus.warning,
-                    detail="Project board usage could not be verified. Manual review recommended.",
+                    check=self._check_map["COLLAB-004"],
+                    status=CheckStatus.passed,
+                    detail="Project boards are in use.",
                 )
             )
+        else:
+            results.append(self._manual_review("COLLAB-004", "Project board usage"))
 
         # COLLAB-005
-        check = check_map["COLLAB-005"]
         if data.has_wiki:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["COLLAB-005"],
                     status=CheckStatus.passed,
                     detail="Wiki or documentation site is available.",
                 )
             )
         else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.warning,
-                    detail="Wiki availability could not be verified. Manual review recommended.",
-                )
-            )
+            results.append(self._manual_review("COLLAB-005", "Wiki availability"))
 
         # COLLAB-006 (PR response time — cannot fully verify, use proxy)
-        check = check_map["COLLAB-006"]
         recent_prs: list[PullRequestInfo] = data.recent_prs
         merged_prs = [pr for pr in recent_prs if pr.merged]
         if not merged_prs:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["COLLAB-006"],
                     status=CheckStatus.not_applicable,
                     detail="No recently merged pull requests available for analysis.",
                 )
@@ -183,7 +149,7 @@ class CollaborationScanner:
             if coverage > 0.90:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["COLLAB-006"],
                         status=CheckStatus.passed,
                         detail=f"{coverage_pct}% of merged PRs received timely reviews.",
                         evidence=evidence,
@@ -192,7 +158,7 @@ class CollaborationScanner:
             elif coverage > 0.75:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["COLLAB-006"],
                         status=CheckStatus.warning,
                         detail=f"{coverage_pct}% of merged PRs received reviews (threshold: >90%).",
                         evidence=evidence,
@@ -201,7 +167,7 @@ class CollaborationScanner:
             else:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["COLLAB-006"],
                         status=CheckStatus.failed,
                         detail=f"Only {coverage_pct}% of merged PRs received reviews.",
                         evidence=evidence,
@@ -209,13 +175,6 @@ class CollaborationScanner:
                 )
 
         # COLLAB-007
-        check = check_map["COLLAB-007"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail="Stale issue/PR management could not be verified automatically. Manual review recommended.",
-            )
-        )
+        results.append(self._manual_review("COLLAB-007", "Stale issue/PR management"))
 
         return results

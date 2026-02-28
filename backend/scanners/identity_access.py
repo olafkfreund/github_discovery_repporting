@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import OrgAssessmentData, OrgMemberInfo, OrgSecuritySettings
 
 
-class IdentityAccessScanner:
+class IdentityAccessScanner(BaseScanner):
     """Evaluates identity and access management practices at the organisation level.
 
     Checks cover MFA enforcement, SSO, admin ratios, bot account hygiene,
@@ -25,7 +25,7 @@ class IdentityAccessScanner:
     # Check catalogue
     # ------------------------------------------------------------------
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="IAM-001",
             check_name="MFA/2FA enforced org-wide",
@@ -140,47 +140,34 @@ class IdentityAccessScanner:
                 "SSO or IdP outages."
             ),
         ),
-    ]
+    )
 
     # ------------------------------------------------------------------
     # Protocol implementation
     # ------------------------------------------------------------------
-
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of identity and access management checks."""
-        return list(self._CHECKS)
 
     def evaluate_org(self, data: OrgAssessmentData) -> list[CheckResult]:
         """Run every IAM-xxx check against org-level *data* and return one result each."""
         members: OrgMemberInfo | None = data.members
         sec: OrgSecuritySettings | None = data.security_settings
         results: list[CheckResult] = []
-        check_map = {c.check_id: c for c in self._CHECKS}
 
         # IAM-001  (MFA/2FA enforced)
-        check = check_map["IAM-001"]
         if members is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["IAM-001"],
                     status=CheckStatus.not_applicable,
                     detail="No organisation membership data available.",
                 )
             )
-        elif members.mfa_enforced:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Multi-factor authentication is enforced for all organisation members.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail=(
+                self._bool_check(
+                    "IAM-001",
+                    members.mfa_enforced,
+                    passed="Multi-factor authentication is enforced for all organisation members.",
+                    failed=(
                         "MFA/2FA is not enforced organisation-wide. Enable the 'Require two-factor "
                         "authentication' setting in the organisation's security settings."
                     ),
@@ -188,29 +175,21 @@ class IdentityAccessScanner:
             )
 
         # IAM-002  (SSO configured)
-        check = check_map["IAM-002"]
         if members is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["IAM-002"],
                     status=CheckStatus.not_applicable,
                     detail="No organisation membership data available.",
                 )
             )
-        elif members.sso_enabled:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="SAML/OIDC single sign-on is configured for the organisation.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail=(
+                self._bool_check(
+                    "IAM-002",
+                    members.sso_enabled,
+                    passed="SAML/OIDC single sign-on is configured for the organisation.",
+                    failed=(
                         "Single sign-on is not configured. Configure SAML or OIDC SSO to "
                         "centralise identity management and enforce corporate authentication policies."
                     ),
@@ -218,11 +197,10 @@ class IdentityAccessScanner:
             )
 
         # IAM-003  (admin ratio <= 5%)
-        check = check_map["IAM-003"]
         if members is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["IAM-003"],
                     status=CheckStatus.not_applicable,
                     detail="No organisation membership data available.",
                 )
@@ -230,7 +208,7 @@ class IdentityAccessScanner:
         elif members.total_members == 0:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["IAM-003"],
                     status=CheckStatus.not_applicable,
                     detail="Organisation has no members; admin ratio cannot be calculated.",
                 )
@@ -246,7 +224,7 @@ class IdentityAccessScanner:
             if admin_ratio <= 0.05:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["IAM-003"],
                         status=CheckStatus.passed,
                         detail=f"Admin ratio is {admin_pct}% ({members.admin_count}/{members.total_members}), within the 5% threshold.",
                         evidence=evidence,
@@ -255,7 +233,7 @@ class IdentityAccessScanner:
             else:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["IAM-003"],
                         status=CheckStatus.failed,
                         detail=(
                             f"Admin ratio is {admin_pct}% ({members.admin_count}/{members.total_members}), "
@@ -266,102 +244,31 @@ class IdentityAccessScanner:
                 )
 
         # IAM-004  (outside collaborators with admin — cannot verify via standard API)
-        check = check_map["IAM-004"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Outside collaborator permission levels cannot be enumerated via the standard API. "
-                    "Manual review of outside collaborator access across all repositories is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("IAM-004", "Outside collaborator permission levels"))
 
         # IAM-005  (bot accounts use service tokens — cannot verify via standard API)
-        check = check_map["IAM-005"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Bot account authentication methods cannot be verified automatically. "
-                    "Manual review to ensure all bot accounts use scoped service tokens is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("IAM-005", "Bot account authentication methods"))
 
         # IAM-006  (deploy keys are read-only — cannot verify via standard API)
-        check = check_map["IAM-006"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Deploy key permissions cannot be aggregated across all repositories via the "
-                    "standard API. Manual audit of deploy keys for write-access configurations is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("IAM-006", "Deploy key permissions"))
 
         # IAM-007  (PAT expiry — cannot verify via standard API)
-        check = check_map["IAM-007"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Personal access token expiry policies cannot be verified via the standard API. "
-                    "Manual review to confirm all PATs have expiration dates is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("IAM-007", "Personal access token expiry policies"))
 
         # IAM-008  (RBAC roles properly scoped — cannot verify via standard API)
-        check = check_map["IAM-008"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "RBAC role scoping cannot be fully verified via the standard API. "
-                    "Manual review of team and repository permission assignments is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("IAM-008", "RBAC role scoping"))
 
         # IAM-009  (team-based access — cannot verify via standard API)
-        check = check_map["IAM-009"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Whether access is granted via teams or individuals cannot be comprehensively "
-                    "verified via the standard API. Manual audit of direct user repository access is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("IAM-009", "Whether access is granted via teams or individuals"))
 
         # IAM-010  (inactive users reviewed — cannot verify via standard API)
-        check = check_map["IAM-010"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "User activity data is not available via the standard API. "
-                    "Manual review of member last-active dates and removal of inactive accounts is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("IAM-010", "User activity data"))
 
         # IAM-011  (least privilege: default_repo_permission is "read" or "none")
-        check = check_map["IAM-011"]
         if sec is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["IAM-011"],
                     status=CheckStatus.not_applicable,
                     detail="No organisation security settings data available.",
                 )
@@ -371,7 +278,7 @@ class IdentityAccessScanner:
             if perm in ("read", "none"):
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["IAM-011"],
                         status=CheckStatus.passed,
                         detail=f"Default repository permission is '{perm}', satisfying the least-privilege requirement.",
                         evidence={"default_repo_permission": perm},
@@ -380,7 +287,7 @@ class IdentityAccessScanner:
             else:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["IAM-011"],
                         status=CheckStatus.failed,
                         detail=(
                             f"Default repository permission is '{perm}'. Set this to 'read' or 'none' "
@@ -391,17 +298,6 @@ class IdentityAccessScanner:
                 )
 
         # IAM-012  (emergency access procedure — cannot verify via standard API)
-        check = check_map["IAM-012"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "The existence of a documented emergency (break-glass) access procedure cannot "
-                    "be verified automatically. Manual confirmation that such a procedure exists and "
-                    "is tested regularly is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("IAM-012", "The existence of a documented emergency (break-glass) access procedure"))
 
         return results

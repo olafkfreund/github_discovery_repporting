@@ -4,6 +4,7 @@ import json
 import re
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -102,6 +103,25 @@ async def get_customer(db: AsyncSession, customer_id: UUID) -> Customer | None:
     """
     result = await db.execute(select(Customer).where(Customer.id == customer_id))
     return result.scalar_one_or_none()
+
+
+async def get_customer_or_404(db: AsyncSession, customer_id: UUID) -> Customer:
+    """Fetch a single customer by primary key or raise a 404 HTTP exception.
+
+    Args:
+        db: An active async database session.
+        customer_id: The UUID primary key of the target customer.
+
+    Returns:
+        The ``Customer`` ORM instance.
+
+    Raises:
+        HTTPException: With status 404 if no customer with *customer_id* exists.
+    """
+    customer = await get_customer(db, customer_id)
+    if customer is None:
+        raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found.")
+    return customer
 
 
 async def update_customer(

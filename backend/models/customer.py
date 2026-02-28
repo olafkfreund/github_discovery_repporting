@@ -20,10 +20,10 @@ class Customer(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "customers"
 
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    slug: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
-    contact_email: Mapped[str | None] = mapped_column(String, nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    name: Mapped[str] = mapped_column(String)
+    slug: Mapped[str] = mapped_column(String, unique=True, index=True)
+    contact_email: Mapped[str | None] = mapped_column(String)
+    notes: Mapped[str | None] = mapped_column(Text)
 
     # Relationships
     platform_connections: Mapped[list[PlatformConnection]] = relationship(
@@ -51,15 +51,15 @@ class PlatformConnection(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    platform: Mapped[Platform] = mapped_column(nullable=False)
-    display_name: Mapped[str] = mapped_column(String, nullable=False)
-    base_url: Mapped[str | None] = mapped_column(String, nullable=True)
-    auth_type: Mapped[AuthType] = mapped_column(nullable=False)
-    credentials_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    org_or_group: Mapped[str] = mapped_column(String, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    platform: Mapped[Platform] = mapped_column()
+    display_name: Mapped[str] = mapped_column(String)
+    base_url: Mapped[str | None] = mapped_column(String)
+    auth_type: Mapped[AuthType] = mapped_column()
+    credentials_encrypted: Mapped[bytes] = mapped_column(LargeBinary)
+    org_or_group: Mapped[str] = mapped_column(String)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_validated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(timezone=True)
     )
 
     # Relationships

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import CIWorkflow, RepoAssessmentData
 
 
-class CodeQualityScanner:
+class CodeQualityScanner(BaseScanner):
     """Evaluates static-quality tooling and test-framework configuration.
 
     Category weight: 0.06 (adjusted for 16-domain architecture).
@@ -14,7 +14,7 @@ class CodeQualityScanner:
     category: Category = Category.code_quality
     weight: float = 0.06
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="CQ-001",
             check_name="Linter configuration present",
@@ -87,75 +87,45 @@ class CodeQualityScanner:
             weight=0.5,
             description="Technical debt should be tracked and managed systematically.",
         ),
-    ]
-
-    def checks(self) -> list[ScanCheck]:
-        return list(self._CHECKS)
+    )
 
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         workflows: list[CIWorkflow] = data.ci_workflows
-        check_map = {c.check_id: c for c in self._CHECKS}
         results: list[CheckResult] = []
 
         # CQ-001 (linter presence proxied through CI workflow flag)
-        check = check_map["CQ-001"]
         lint_workflows = [w for w in workflows if w.has_lint]
-        if lint_workflows:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail=f"{len(lint_workflows)} workflow(s) include a lint step.",
-                    evidence={"lint_workflow_names": [w.name for w in lint_workflows]},
-                )
-            )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No workflow includes a linting step.",
-                )
-            )
-
-        # CQ-002 (test framework proxied through CI workflow flag)
-        check = check_map["CQ-002"]
-        test_workflows = [w for w in workflows if w.has_tests]
-        if test_workflows:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail=f"{len(test_workflows)} workflow(s) include a test-execution step.",
-                    evidence={"test_workflow_names": [w.name for w in test_workflows]},
-                )
-            )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No workflow includes a test-execution step.",
-                )
-            )
-
-        # CQ-003 (coverage tooling)
-        check = check_map["CQ-003"]
         results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail="Code-coverage tooling presence could not be verified automatically. Manual review recommended.",
+            self._bool_check(
+                "CQ-001",
+                bool(lint_workflows),
+                passed=f"{len(lint_workflows)} workflow(s) include a lint step.",
+                failed="No workflow includes a linting step.",
+                evidence={"lint_workflow_names": [w.name for w in lint_workflows]} if lint_workflows else None,
             )
         )
 
+        # CQ-002 (test framework proxied through CI workflow flag)
+        test_workflows = [w for w in workflows if w.has_tests]
+        results.append(
+            self._bool_check(
+                "CQ-002",
+                bool(test_workflows),
+                passed=f"{len(test_workflows)} workflow(s) include a test-execution step.",
+                failed="No workflow includes a test-execution step.",
+                evidence={"test_workflow_names": [w.name for w in test_workflows]} if test_workflows else None,
+            )
+        )
+
+        # CQ-003 (coverage tooling)
+        results.append(self._manual_review("CQ-003", "Code-coverage tooling presence"))
+
         # CQ-004 (code coverage > 60%)
-        check = check_map["CQ-004"]
         if data.test_coverage_percent is not None:
             if data.test_coverage_percent >= 60.0:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["CQ-004"],
                         status=CheckStatus.passed,
                         detail=f"Code coverage is {data.test_coverage_percent:.1f}% (threshold: 60%).",
                         evidence={"coverage_percent": data.test_coverage_percent},
@@ -164,7 +134,7 @@ class CodeQualityScanner:
             else:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["CQ-004"],
                         status=CheckStatus.failed,
                         detail=f"Code coverage is {data.test_coverage_percent:.1f}% (below 60% threshold).",
                         evidence={"coverage_percent": data.test_coverage_percent},
@@ -173,85 +143,46 @@ class CodeQualityScanner:
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["CQ-004"],
                     status=CheckStatus.not_applicable,
                     detail="Code coverage data not available.",
                 )
             )
 
         # CQ-005
-        check = check_map["CQ-005"]
-        if data.has_readme:
-            results.append(
-                CheckResult(
-                    check=check, status=CheckStatus.passed, detail="A README file is present."
-                )
+        results.append(
+            self._bool_check(
+                "CQ-005",
+                data.has_readme,
+                passed="A README file is present.",
+                failed="No README file was found in the repository.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No README file was found in the repository.",
-                )
-            )
+        )
 
         # CQ-006 (EditorConfig/Prettier)
-        check = check_map["CQ-006"]
-        if data.has_editorconfig:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="EditorConfig or formatter configuration is present.",
-                )
+        results.append(
+            self._bool_check(
+                "CQ-006",
+                data.has_editorconfig,
+                passed="EditorConfig or formatter configuration is present.",
+                failed="No EditorConfig or formatter configuration found.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No EditorConfig or formatter configuration found.",
-                )
-            )
+        )
 
         # CQ-007 (type checking)
-        check = check_map["CQ-007"]
-        if data.has_type_checking:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Type-checking configuration is present.",
-                )
+        results.append(
+            self._bool_check(
+                "CQ-007",
+                data.has_type_checking,
+                passed="Type-checking configuration is present.",
+                failed="No type-checking configuration found.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No type-checking configuration found.",
-                )
-            )
+        )
 
         # CQ-008 (code complexity)
-        check = check_map["CQ-008"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail="Code complexity measurement could not be verified automatically. Manual review recommended.",
-            )
-        )
+        results.append(self._manual_review("CQ-008", "Code complexity measurement"))
 
         # CQ-009 (technical debt tracking)
-        check = check_map["CQ-009"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail="Technical debt tracking could not be verified automatically. Manual review recommended.",
-            )
-        )
+        results.append(self._manual_review("CQ-009", "Technical debt tracking"))
 
         return results

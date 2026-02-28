@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import RepoAssessmentData
 
 
-class MonitoringScanner:
+class MonitoringScanner(BaseScanner):
     """Evaluates monitoring and observability maturity for a repository.
 
     Checks cover monitoring configuration, alerting, logging, tracing,
@@ -22,7 +22,7 @@ class MonitoringScanner:
     # Check catalogue
     # ------------------------------------------------------------------
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="MON-001",
             check_name="Monitoring configuration present",
@@ -111,45 +111,30 @@ class MonitoringScanner:
             weight=1.5,
             description="An incident response playbook must be present to guide operators during production incidents.",
         ),
-    ]
+    )
 
     # ------------------------------------------------------------------
     # Protocol implementation
     # ------------------------------------------------------------------
 
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of monitoring and observability checks."""
-        return list(self._CHECKS)
-
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Run every MON-xxx check against *data* and return one result each."""
-        check_map = {c.check_id: c for c in self._CHECKS}
         results: list[CheckResult] = []
 
         # MON-001 — Monitoring configuration present
-        check = check_map["MON-001"]
-        if data.has_monitoring_config:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A monitoring configuration file is present in the repository.",
-                )
+        results.append(
+            self._bool_check(
+                "MON-001",
+                data.has_monitoring_config,
+                passed="A monitoring configuration file is present in the repository.",
+                failed="No monitoring configuration file was detected.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No monitoring configuration file was detected.",
-                )
-            )
+        )
 
         # MON-002 — Alerting rules defined (subset of monitoring; not separately detectable)
-        check = check_map["MON-002"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["MON-002"],
                 status=CheckStatus.warning,
                 detail=(
                     "Alerting rule definitions cannot be verified separately from general monitoring "
@@ -159,150 +144,65 @@ class MonitoringScanner:
         )
 
         # MON-003 — Logging framework configured (not verifiable via standard API)
-        check = check_map["MON-003"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Logging framework configuration cannot be determined automatically from repository "
-                    "metadata. Manual review of application code and configuration is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("MON-003", "Logging framework configuration"))
 
         # MON-004 — Distributed tracing enabled (not verifiable via standard API)
-        check = check_map["MON-004"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Distributed tracing enablement cannot be verified automatically via the repository "
-                    "API. Manual review of application instrumentation is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("MON-004", "Distributed tracing enablement"))
 
         # MON-005 — Health check endpoints defined (proxied via runbook presence)
-        check = check_map["MON-005"]
-        if data.has_runbook:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A runbook is present, which typically documents health check endpoints.",
-                )
+        results.append(
+            self._bool_check(
+                "MON-005",
+                data.has_runbook,
+                passed="A runbook is present, which typically documents health check endpoints.",
+                failed="No runbook found; health check endpoint documentation may be absent.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No runbook found; health check endpoint documentation may be absent.",
-                )
-            )
+        )
 
         # MON-006 — SLO/SLA documentation present
-        check = check_map["MON-006"]
-        if data.has_sla_document:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="An SLA/SLO document is present in the repository.",
-                )
+        results.append(
+            self._bool_check(
+                "MON-006",
+                data.has_sla_document,
+                passed="An SLA/SLO document is present in the repository.",
+                failed="No SLA or SLO document was found.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No SLA or SLO document was found.",
-                )
-            )
+        )
 
         # MON-007 — Error tracking tool integrated (not verifiable via standard API)
-        check = check_map["MON-007"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Error tracking tool integration cannot be verified automatically from repository "
-                    "metadata. Manual review of application dependencies and configuration is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("MON-007", "Error tracking tool integration"))
 
         # MON-008 — Performance benchmarks defined (not verifiable via standard API)
-        check = check_map["MON-008"]
+        results.append(self._manual_review("MON-008", "Performance benchmark definitions"))
+
+        # MON-009 — Dashboards as code present
         results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Performance benchmark definitions cannot be verified automatically. "
-                    "Manual review of test suites and documentation is recommended."
-                ),
+            self._bool_check(
+                "MON-009",
+                data.has_dashboards_as_code,
+                passed="Dashboard-as-code files detected in the repository.",
+                failed="No dashboard-as-code files were detected.",
             )
         )
 
-        # MON-009 — Dashboards as code present
-        check = check_map["MON-009"]
-        if data.has_dashboards_as_code:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Dashboard-as-code files detected in the repository.",
-                )
-            )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No dashboard-as-code files were detected.",
-                )
-            )
-
         # MON-010 — On-call rotation documented
-        check = check_map["MON-010"]
-        if data.has_on_call_doc:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="An on-call rotation document is present in the repository.",
-                )
+        results.append(
+            self._bool_check(
+                "MON-010",
+                data.has_on_call_doc,
+                passed="An on-call rotation document is present in the repository.",
+                failed="No on-call rotation document was found.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No on-call rotation document was found.",
-                )
-            )
+        )
 
         # MON-011 — Incident response playbook present
-        check = check_map["MON-011"]
-        if data.has_incident_response_playbook:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="An incident response playbook is present in the repository.",
-                )
+        results.append(
+            self._bool_check(
+                "MON-011",
+                data.has_incident_response_playbook,
+                passed="An incident response playbook is present in the repository.",
+                failed="No incident response playbook was found.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No incident response playbook was found.",
-                )
-            )
+        )
 
         return results

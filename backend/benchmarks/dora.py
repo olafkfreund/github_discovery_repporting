@@ -78,4 +78,5 @@ def classify_dora_level(overall_score: float) -> str:
         threshold = DORA_LEVELS[level]["score_threshold"]
         if overall_score >= threshold:  # type: ignore[operator]
             return level
-    return "low"
+    # Unreachable: "low" has score_threshold=0, so every finite float matches above.
+    raise AssertionError(f"classify_dora_level: no level matched score {overall_score!r}")

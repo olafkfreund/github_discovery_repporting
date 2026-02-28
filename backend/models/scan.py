@@ -33,19 +33,12 @@ class Scan(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    status: Mapped[ScanStatus] = mapped_column(
-        default=ScanStatus.pending,
-        nullable=False,
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    total_repos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    scan_config: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[ScanStatus] = mapped_column(default=ScanStatus.pending)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    total_repos: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    scan_config: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     # Relationships
     customer: Mapped[Customer] = relationship(
@@ -87,11 +80,11 @@ class ScanRepo(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    repo_external_id: Mapped[str] = mapped_column(String, nullable=False)
-    repo_name: Mapped[str] = mapped_column(String, nullable=False)
-    repo_url: Mapped[str] = mapped_column(String, nullable=False)
-    default_branch: Mapped[str | None] = mapped_column(String, nullable=True)
-    raw_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    repo_external_id: Mapped[str] = mapped_column(String)
+    repo_name: Mapped[str] = mapped_column(String)
+    repo_url: Mapped[str] = mapped_column(String)
+    default_branch: Mapped[str | None] = mapped_column(String)
+    raw_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     # Relationships
     scan: Mapped[Scan] = relationship(

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import OrgAssessmentData, OrgSecuritySettings
 
 
-class PlatformArchScanner:
+class PlatformArchScanner(BaseScanner):
     """Evaluates platform-level architecture and organisation-wide configuration.
 
     Checks cover platform type, enterprise feature availability, default visibility
@@ -21,7 +21,7 @@ class PlatformArchScanner:
     # Check catalogue
     # ------------------------------------------------------------------
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="PLAT-001",
             check_name="Platform type identified",
@@ -119,27 +119,21 @@ class PlatformArchScanner:
                 "third-party actions without review."
             ),
         ),
-    ]
+    )
 
     # ------------------------------------------------------------------
     # Protocol implementation
     # ------------------------------------------------------------------
 
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of platform architecture checks."""
-        return list(self._CHECKS)
-
     def evaluate_org(self, data: OrgAssessmentData) -> list[CheckResult]:
         """Run every PLAT-xxx check against org-level *data* and return one result each."""
         sec: OrgSecuritySettings | None = data.security_settings
         results: list[CheckResult] = []
-        check_map = {c.check_id: c for c in self._CHECKS}
 
         # PLAT-001  (always passes — we know the platform is GitHub)
-        check = check_map["PLAT-001"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["PLAT-001"],
                 status=CheckStatus.passed,
                 detail="Platform identified as GitHub.",
                 evidence={"org_name": data.org_name},
@@ -147,22 +141,20 @@ class PlatformArchScanner:
         )
 
         # PLAT-002  (always passes — assessment tool only runs against supported API versions)
-        check = check_map["PLAT-002"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["PLAT-002"],
                 status=CheckStatus.passed,
                 detail="GitHub REST API v3 / GraphQL v4 is supported and in use.",
             )
         )
 
         # PLAT-003  (check billing plan string for "enterprise")
-        check = check_map["PLAT-003"]
         billing_plan = data.billing_plan or ""
         if "enterprise" in billing_plan.lower():
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["PLAT-003"],
                     status=CheckStatus.passed,
                     detail=f"Enterprise plan detected: '{billing_plan}'.",
                     evidence={"billing_plan": billing_plan},
@@ -171,7 +163,7 @@ class PlatformArchScanner:
         else:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["PLAT-003"],
                     status=CheckStatus.failed,
                     detail=(
                         f"Billing plan '{billing_plan}' does not include enterprise features. "
@@ -183,11 +175,10 @@ class PlatformArchScanner:
 
         # PLAT-004  (private-by-default: default_repo_permission not "none" AND
         #            members_can_create_public_repos is False)
-        check = check_map["PLAT-004"]
         if sec is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["PLAT-004"],
                     status=CheckStatus.not_applicable,
                     detail="No organisation security settings data available.",
                 )
@@ -198,7 +189,7 @@ class PlatformArchScanner:
             if not allows_public and perm.lower() != "none":
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["PLAT-004"],
                         status=CheckStatus.passed,
                         detail=(
                             "Members cannot create public repositories and a non-permissive "
@@ -218,7 +209,7 @@ class PlatformArchScanner:
                     reasons.append("default repository permission is set to 'none'")
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["PLAT-004"],
                         status=CheckStatus.failed,
                         detail="Default repository visibility is not restricted: "
                         + "; ".join(reasons)
@@ -231,29 +222,21 @@ class PlatformArchScanner:
                 )
 
         # PLAT-005  (IP allow-listing)
-        check = check_map["PLAT-005"]
         if sec is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["PLAT-005"],
                     status=CheckStatus.not_applicable,
                     detail="No organisation security settings data available.",
                 )
             )
-        elif sec.ip_allow_list_enabled:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="IP allow-listing is enabled for the organisation.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail=(
+                self._bool_check(
+                    "PLAT-005",
+                    sec.ip_allow_list_enabled,
+                    passed="IP allow-listing is enabled for the organisation.",
+                    failed=(
                         "IP allow-listing is not enabled. Configure an IP allowlist to restrict "
                         "platform access to known corporate network ranges."
                     ),
@@ -261,92 +244,31 @@ class PlatformArchScanner:
             )
 
         # PLAT-006  (org-level security policy)
-        check = check_map["PLAT-006"]
-        if data.has_org_level_security_policy:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="An organisation-level security policy is in place.",
-                )
+        results.append(
+            self._bool_check(
+                "PLAT-006",
+                data.has_org_level_security_policy,
+                passed="An organisation-level security policy is in place.",
+                failed=(
+                    "No organisation-level security policy was found. Create a SECURITY.md "
+                    "in the .github repository to surface it across all repos."
+                ),
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail=(
-                        "No organisation-level security policy was found. Create a SECURITY.md "
-                        "in the .github repository to surface it across all repos."
-                    ),
-                )
-            )
+        )
 
         # PLAT-007  (GHAS — cannot verify via standard API; always warning)
-        check = check_map["PLAT-007"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "GitHub Advanced Security enablement could not be verified automatically via "
-                    "the standard API. Manual review of the organisation's security settings is "
-                    "recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("PLAT-007", "GitHub Advanced Security enablement"))
 
         # PLAT-008  (audit log streaming — cannot verify via standard API; always warning)
-        check = check_map["PLAT-008"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Audit log streaming configuration cannot be verified via the standard API. "
-                    "Manual review of the organisation's audit log settings is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("PLAT-008", "Audit log streaming configuration"))
 
         # PLAT-009  (custom roles — cannot verify via standard API; always warning)
-        check = check_map["PLAT-009"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Custom role definitions cannot be enumerated via the standard API. "
-                    "Manual review of the organisation's custom roles is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("PLAT-009", "Custom role definitions"))
 
         # PLAT-010  (self-hosted runners — cannot verify via standard API; always warning)
-        check = check_map["PLAT-010"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Self-hosted runner availability cannot be verified via the standard API. "
-                    "Manual review of the organisation's Actions runner settings is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("PLAT-010", "Self-hosted runner availability"))
 
         # PLAT-011  (Actions/runner restrictions — cannot verify via standard API; always warning)
-        check = check_map["PLAT-011"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "GitHub Actions permission restrictions cannot be fully verified via the "
-                    "standard API. Manual review of the organisation's Actions policies is "
-                    "recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("PLAT-011", "GitHub Actions permission restrictions"))
 
         return results

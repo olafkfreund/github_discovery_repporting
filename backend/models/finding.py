@@ -31,15 +31,15 @@ class Finding(UUIDMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
-    category: Mapped[Category] = mapped_column(nullable=False)
-    check_id: Mapped[str] = mapped_column(String, nullable=False)
-    check_name: Mapped[str] = mapped_column(String, nullable=False)
-    severity: Mapped[Severity] = mapped_column(nullable=False)
-    status: Mapped[CheckStatus] = mapped_column(nullable=False)
-    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
-    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    weight: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
-    score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    category: Mapped[Category] = mapped_column()
+    check_id: Mapped[str] = mapped_column(String)
+    check_name: Mapped[str] = mapped_column(String)
+    severity: Mapped[Severity] = mapped_column()
+    status: Mapped[CheckStatus] = mapped_column()
+    detail: Mapped[str | None] = mapped_column(Text)
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+    score: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Relationships
     scan: Mapped[Scan] = relationship(
@@ -63,13 +63,13 @@ class ScanScore(UUIDMixin, Base):
         nullable=False,
         index=True,
     )
-    category: Mapped[Category] = mapped_column(nullable=False)
-    score: Mapped[float] = mapped_column(Float, nullable=False)
-    max_score: Mapped[float] = mapped_column(Float, nullable=False)
-    weight: Mapped[float] = mapped_column(Float, nullable=False)
-    finding_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    pass_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    fail_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    category: Mapped[Category] = mapped_column()
+    score: Mapped[float] = mapped_column(Float)
+    max_score: Mapped[float] = mapped_column(Float)
+    weight: Mapped[float] = mapped_column(Float)
+    finding_count: Mapped[int] = mapped_column(Integer)
+    pass_count: Mapped[int] = mapped_column(Integer)
+    fail_count: Mapped[int] = mapped_column(Integer)
 
     # Relationships
     scan: Mapped[Scan] = relationship(

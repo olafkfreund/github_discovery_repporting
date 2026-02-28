@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from backend.models.enums import Category
+from backend.models.enums import Category, CheckStatus
 from backend.scanners.base import CheckResult, OrgScanner, Scanner
 from backend.scanners.cicd import CICDScanner
 from backend.scanners.code_quality import CodeQualityScanner
@@ -139,8 +139,6 @@ class ScanOrchestrator:
         that category (``not_applicable`` checks are excluded from max_score
         because they cannot be earned or lost).
         """
-        from backend.models.enums import CheckStatus
-
         # Build scanner weight lookup keyed on category
         scanner_weights: dict[Category, float] = {}
         for org_s in self._org_scanners:

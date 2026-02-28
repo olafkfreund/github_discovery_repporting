@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,25 +16,18 @@ if TYPE_CHECKING:
     from backend.models.scan import Scan
 
 
-class ReportTemplate(UUIDMixin, Base):
+class ReportTemplate(UUIDMixin, TimestampMixin, Base):
     """Reusable styling and section configuration for generated reports."""
 
     __tablename__ = "report_templates"
 
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    header_logo_path: Mapped[str | None] = mapped_column(String, nullable=True)
-    accent_color: Mapped[str] = mapped_column(
-        String, default="#2563eb", nullable=False
-    )
-    include_sections: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
-    custom_css: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(Text)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    header_logo_path: Mapped[str | None] = mapped_column(String)
+    accent_color: Mapped[str] = mapped_column(String, default="#2563eb")
+    include_sections: Mapped[list[str] | None] = mapped_column(JSON)
+    custom_css: Mapped[str | None] = mapped_column(Text)
 
     # Relationships
     reports: Mapped[list[Report]] = relationship(
@@ -66,20 +59,14 @@ class Report(UUIDMixin, TimestampMixin, Base):
         ForeignKey("report_templates.id", ondelete="SET NULL"),
         nullable=True,
     )
-    title: Mapped[str] = mapped_column(String, nullable=False)
-    generated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ai_recommendations: Mapped[list[dict[str, Any]] | None] = mapped_column(
-        JSON, nullable=True
-    )
-    overall_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    dora_level: Mapped[str | None] = mapped_column(String, nullable=True)
-    pdf_path: Mapped[str | None] = mapped_column(String, nullable=True)
-    status: Mapped[ReportStatus] = mapped_column(
-        default=ReportStatus.pending, nullable=False
-    )
+    title: Mapped[str] = mapped_column(String)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ai_summary: Mapped[str | None] = mapped_column(Text)
+    ai_recommendations: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    overall_score: Mapped[float | None] = mapped_column(Float)
+    dora_level: Mapped[str | None] = mapped_column(String)
+    pdf_path: Mapped[str | None] = mapped_column(String)
+    status: Mapped[ReportStatus] = mapped_column(default=ReportStatus.pending)
 
     # Relationships
     scan: Mapped[Scan] = relationship("Scan", lazy="selectin")

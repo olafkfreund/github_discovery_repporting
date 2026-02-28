@@ -67,7 +67,7 @@ class ConnectionUpdate(BaseModel):
 
     display_name: str | None = None
     base_url: str | None = None
-    auth_type: str | None = None
+    auth_type: AuthType | None = None
     credentials: str | None = None
     org_or_group: str | None = None
     is_active: bool | None = None

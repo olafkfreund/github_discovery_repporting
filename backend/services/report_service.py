@@ -360,7 +360,7 @@ def trigger_report_generation(report_id: UUID) -> None:
     """
     from backend.database import AsyncSessionLocal  # local import — avoids circular
 
-    asyncio.ensure_future(
+    asyncio.create_task(
         generate_report_for_scan(
             report_id=report_id,
             db_factory=AsyncSessionLocal,

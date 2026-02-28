@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import RepoAssessmentData, SecurityFeatures
 
 
-class SecretsMgmtScanner:
+class SecretsMgmtScanner(BaseScanner):
     """Evaluates secrets management practices for a repository.
 
     Checks cover secret scanning enablement, detected secret exposures, push
@@ -23,7 +23,7 @@ class SecretsMgmtScanner:
     # Check catalogue
     # ------------------------------------------------------------------
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="SEC-001",
             check_name="Secret scanning enabled",
@@ -104,46 +104,33 @@ class SecretsMgmtScanner:
             weight=0.5,
             description="Access to secrets must generate an auditable trail of who retrieved what and when.",
         ),
-    ]
+    )
 
     # ------------------------------------------------------------------
     # Protocol implementation
     # ------------------------------------------------------------------
 
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of secrets management checks."""
-        return list(self._CHECKS)
-
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Run every SEC-xxx (secrets) check against *data* and return one result each."""
         sec: SecurityFeatures | None = data.security
         results: list[CheckResult] = []
-        check_map = {c.check_id: c for c in self._CHECKS}
 
         # SEC-001  (secret scanning enabled)
-        check = check_map["SEC-001"]
         if sec is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["SEC-001"],
                     status=CheckStatus.not_applicable,
                     detail="No security feature data available.",
                 )
             )
-        elif sec.secret_scanning_enabled:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="Secret scanning is enabled for this repository.",
-                )
-            )
         else:
             results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail=(
+                self._bool_check(
+                    "SEC-001",
+                    sec.secret_scanning_enabled,
+                    passed="Secret scanning is enabled for this repository.",
+                    failed=(
                         "Secret scanning is not enabled. Enable it in the repository's security "
                         "settings to detect accidental credential exposure."
                     ),
@@ -151,11 +138,10 @@ class SecretsMgmtScanner:
             )
 
         # SEC-002  (no exposed secrets — proxy via open alerts with "secret" in title)
-        check = check_map["SEC-002"]
         if sec is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["SEC-002"],
                     status=CheckStatus.not_applicable,
                     detail="No security feature data available.",
                 )
@@ -169,7 +155,7 @@ class SecretsMgmtScanner:
             if not secret_alerts:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SEC-002"],
                         status=CheckStatus.passed,
                         detail="No open alerts indicating an exposed secret were detected.",
                     )
@@ -177,7 +163,7 @@ class SecretsMgmtScanner:
             else:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SEC-002"],
                         status=CheckStatus.failed,
                         detail=f"{len(secret_alerts)} open alert(s) referencing a potential secret exposure.",
                         evidence={
@@ -188,63 +174,22 @@ class SecretsMgmtScanner:
                 )
 
         # SEC-003  (push protection — cannot fully verify via standard API)
-        check = check_map["SEC-003"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Secret scanning push protection status cannot be fully verified via the "
-                    "standard API. Manual confirmation that push protection is enabled is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("SEC-003", "Secret scanning push protection status"))
 
         # SEC-004  (custom secret patterns — cannot verify via standard API)
-        check = check_map["SEC-004"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Custom secret scanning pattern definitions cannot be enumerated via the "
-                    "standard API. Manual review of the organisation's custom patterns is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("SEC-004", "Custom secret scanning pattern definitions"))
 
         # SEC-005  (secrets in vault — cannot verify via standard API)
-        check = check_map["SEC-005"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Whether runtime secrets are stored in a dedicated vault cannot be verified "
-                    "automatically. Manual review of secrets management practices is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("SEC-005", "Whether runtime secrets are stored in a dedicated vault"))
 
         # SEC-006  (environment secrets used — cannot verify via standard API)
-        check = check_map["SEC-006"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "CI/CD secret scoping to deployment environments cannot be verified "
-                    "automatically. Manual review of GitHub Actions environment secrets is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("SEC-006", "CI/CD secret scoping to deployment environments"))
 
         # SEC-007  (no hardcoded credentials — proxy via secret_scanning_enabled + no open alerts)
-        check = check_map["SEC-007"]
         if sec is None:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["SEC-007"],
                     status=CheckStatus.not_applicable,
                     detail="No security feature data available.",
                 )
@@ -258,7 +203,7 @@ class SecretsMgmtScanner:
             if sec.secret_scanning_enabled and not secret_alerts:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SEC-007"],
                         status=CheckStatus.passed,
                         detail=(
                             "Secret scanning is enabled and no open secret alerts were found, "
@@ -269,7 +214,7 @@ class SecretsMgmtScanner:
             elif not sec.secret_scanning_enabled:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SEC-007"],
                         status=CheckStatus.failed,
                         detail=(
                             "Secret scanning is disabled; hardcoded credentials cannot be detected. "
@@ -280,7 +225,7 @@ class SecretsMgmtScanner:
             else:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SEC-007"],
                         status=CheckStatus.failed,
                         detail=(
                             f"{len(secret_alerts)} open secret alert(s) indicate potential hardcoded "
@@ -294,42 +239,12 @@ class SecretsMgmtScanner:
                 )
 
         # SEC-008  (API key rotation policy — cannot verify via standard API)
-        check = check_map["SEC-008"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "API key rotation policy compliance cannot be verified automatically. "
-                    "Manual review to confirm all API keys have a documented rotation schedule is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("SEC-008", "API key rotation policy compliance"))
 
         # SEC-009  (service accounts use short-lived tokens — cannot verify via standard API)
-        check = check_map["SEC-009"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Service account token lifetimes cannot be verified via the standard API. "
-                    "Manual review to confirm short-lived tokens (e.g. OIDC) are used in CI/CD is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("SEC-009", "Service account token lifetimes"))
 
         # SEC-010  (secret audit trail — cannot verify via standard API)
-        check = check_map["SEC-010"]
-        results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Secret access audit trail availability cannot be verified automatically. "
-                    "Manual confirmation that the secrets management system provides an audit log is recommended."
-                ),
-            )
-        )
+        results.append(self._manual_review("SEC-010", "Secret access audit trail availability"))
 
         return results

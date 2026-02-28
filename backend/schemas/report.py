@@ -50,8 +50,8 @@ class ReportResponse(BaseModel):
 class ReportDetailResponse(ReportResponse):
     """Full report record including AI-generated content."""
 
-    ai_summary: str | None
-    ai_recommendations: list[dict[str, Any]] | None
+    ai_summary: str | None = None
+    ai_recommendations: list[dict[str, Any]] | None = None
 
 
 # ---------------------------------------------------------------------------

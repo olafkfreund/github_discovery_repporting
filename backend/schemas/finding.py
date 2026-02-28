@@ -19,7 +19,7 @@ class FindingResponse(BaseModel):
 
     id: UUID
     scan_id: UUID
-    scan_repo_id: UUID
+    scan_repo_id: UUID | None
     category: Category
     check_id: str
     check_name: str

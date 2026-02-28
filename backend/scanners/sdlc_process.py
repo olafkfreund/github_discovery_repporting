@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import PullRequestInfo, RepoAssessmentData
 
 
-class SDLCProcessScanner:
+class SDLCProcessScanner(BaseScanner):
     """Evaluates Software Development Lifecycle (SDLC) process maturity.
 
     Category weight: 0.06.
@@ -14,7 +14,7 @@ class SDLCProcessScanner:
     category: Category = Category.sdlc_process
     weight: float = 0.06
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="SDLC-001",
             check_name="PR template exists",
@@ -111,63 +111,39 @@ class SDLCProcessScanner:
             weight=1.0,
             description="Up-to-date API documentation (e.g. OpenAPI spec, generated docs) must be present.",
         ),
-    ]
-
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of SDLC process checks."""
-        return list(self._CHECKS)
+    )
 
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Run every SDLC-xxx check against *data* and return one result each."""
-        check_map = {c.check_id: c for c in self._CHECKS}
         results: list[CheckResult] = []
 
         # SDLC-001: PR template exists
-        check = check_map["SDLC-001"]
-        if data.has_pr_template:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A pull-request template is present.",
-                )
+        results.append(
+            self._bool_check(
+                "SDLC-001",
+                data.has_pr_template,
+                passed="A pull-request template is present.",
+                failed="No pull-request template was found.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No pull-request template was found.",
-                )
-            )
+        )
 
         # SDLC-002: Contributing guide exists
-        check = check_map["SDLC-002"]
-        if data.has_contributing_guide:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A contributing guide is present.",
-                )
+        results.append(
+            self._bool_check(
+                "SDLC-002",
+                data.has_contributing_guide,
+                passed="A contributing guide is present.",
+                failed="No contributing guide was found.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No contributing guide was found.",
-                )
-            )
+        )
 
         # SDLC-003: PRs have reviews before merge (review coverage on merged PRs)
-        check = check_map["SDLC-003"]
         recent_prs: list[PullRequestInfo] = data.recent_prs
         merged_prs = [pr for pr in recent_prs if pr.merged]
         if not merged_prs:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["SDLC-003"],
                     status=CheckStatus.not_applicable,
                     detail="No recently merged pull requests available for review coverage analysis.",
                 )
@@ -184,7 +160,7 @@ class SDLCProcessScanner:
             if coverage > 0.75:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SDLC-003"],
                         status=CheckStatus.passed,
                         detail=f"{coverage_pct}% of merged PRs received at least one review.",
                         evidence=evidence,
@@ -193,7 +169,7 @@ class SDLCProcessScanner:
             elif coverage > 0.50:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SDLC-003"],
                         status=CheckStatus.warning,
                         detail=f"Only {coverage_pct}% of merged PRs were reviewed (threshold: >75%).",
                         evidence=evidence,
@@ -202,7 +178,7 @@ class SDLCProcessScanner:
             else:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SDLC-003"],
                         status=CheckStatus.failed,
                         detail=f"Only {coverage_pct}% of merged PRs were reviewed (below 50%).",
                         evidence=evidence,
@@ -210,11 +186,10 @@ class SDLCProcessScanner:
                 )
 
         # SDLC-004: Average PR size less than 500 lines
-        check = check_map["SDLC-004"]
         if not recent_prs:
             results.append(
                 CheckResult(
-                    check=check,
+                    check=self._check_map["SDLC-004"],
                     status=CheckStatus.not_applicable,
                     detail="No recent pull requests available for size analysis.",
                 )
@@ -229,7 +204,7 @@ class SDLCProcessScanner:
             if avg_size < 500:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SDLC-004"],
                         status=CheckStatus.passed,
                         detail=f"Average PR size is {avg_size_rounded} lines (threshold: <500).",
                         evidence=evidence,
@@ -238,7 +213,7 @@ class SDLCProcessScanner:
             elif avg_size < 1000:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SDLC-004"],
                         status=CheckStatus.warning,
                         detail=f"Average PR size is {avg_size_rounded} lines (above 500-line threshold).",
                         evidence=evidence,
@@ -247,7 +222,7 @@ class SDLCProcessScanner:
             else:
                 results.append(
                     CheckResult(
-                        check=check,
+                        check=self._check_map["SDLC-004"],
                         status=CheckStatus.failed,
                         detail=f"Average PR size is {avg_size_rounded} lines, exceeding 1000 lines.",
                         evidence=evidence,
@@ -255,149 +230,76 @@ class SDLCProcessScanner:
                 )
 
         # SDLC-005: Branching strategy documented
-        check = check_map["SDLC-005"]
-        if data.has_branching_strategy_doc:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A branching strategy document is present.",
-                )
-            )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No branching strategy documentation was found.",
-                )
-            )
-
-        # SDLC-006: Release process defined
-        check = check_map["SDLC-006"]
-        if data.has_release_process_doc:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A release process document is present.",
-                )
-            )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No release process documentation was found.",
-                )
-            )
-
-        # SDLC-007: Semantic versioning used (cannot verify directly via API)
-        check = check_map["SDLC-007"]
         results.append(
-            CheckResult(
-                check=check,
-                status=CheckStatus.warning,
-                detail=(
-                    "Semantic versioning adoption could not be verified automatically. "
-                    "Confirm that release tags follow the MAJOR.MINOR.PATCH format."
-                ),
+            self._bool_check(
+                "SDLC-005",
+                data.has_branching_strategy_doc,
+                passed="A branching strategy document is present.",
+                failed="No branching strategy documentation was found.",
             )
         )
 
+        # SDLC-006: Release process defined
+        results.append(
+            self._bool_check(
+                "SDLC-006",
+                data.has_release_process_doc,
+                passed="A release process document is present.",
+                failed="No release process documentation was found.",
+            )
+        )
+
+        # SDLC-007: Semantic versioning used (cannot verify directly via API)
+        results.append(self._manual_review("SDLC-007", "Semantic versioning adoption"))
+
         # SDLC-008: Feature flags framework present
-        check = check_map["SDLC-008"]
-        if data.has_feature_flags:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A feature flags framework or configuration is present.",
-                )
+        results.append(
+            self._bool_check(
+                "SDLC-008",
+                data.has_feature_flags,
+                passed="A feature flags framework or configuration is present.",
+                failed="No feature flags framework was detected in the repository.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No feature flags framework was detected in the repository.",
-                )
-            )
+        )
 
         # SDLC-009: Hotfix process documented
-        check = check_map["SDLC-009"]
-        if data.has_hotfix_process_doc:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A hotfix process document is present.",
-                )
+        results.append(
+            self._bool_check(
+                "SDLC-009",
+                data.has_hotfix_process_doc,
+                passed="A hotfix process document is present.",
+                failed="No hotfix process documentation was found.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No hotfix process documentation was found.",
-                )
-            )
+        )
 
         # SDLC-010: Definition of done documented
-        check = check_map["SDLC-010"]
-        if data.has_definition_of_done:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A definition of done document is present.",
-                )
+        results.append(
+            self._bool_check(
+                "SDLC-010",
+                data.has_definition_of_done,
+                passed="A definition of done document is present.",
+                failed="No definition of done documentation was found.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No definition of done documentation was found.",
-                )
-            )
+        )
 
         # SDLC-011: Architecture Decision Records present
-        check = check_map["SDLC-011"]
-        if data.has_adr_directory:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="An Architecture Decision Records (ADR) directory is present.",
-                )
+        results.append(
+            self._bool_check(
+                "SDLC-011",
+                data.has_adr_directory,
+                passed="An Architecture Decision Records (ADR) directory is present.",
+                failed="No ADR directory was detected. Consider adopting ADRs to document architectural decisions.",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No ADR directory was detected. Consider adopting ADRs to document architectural decisions.",
-                )
-            )
+        )
 
         # SDLC-012: API documentation maintained
-        check = check_map["SDLC-012"]
-        if data.has_api_docs:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="API documentation is present in the repository.",
-                )
+        results.append(
+            self._bool_check(
+                "SDLC-012",
+                data.has_api_docs,
+                passed="API documentation is present in the repository.",
+                failed="No API documentation was detected (e.g. OpenAPI spec, generated docs).",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No API documentation was detected (e.g. OpenAPI spec, generated docs).",
-                )
-            )
+        )
 
         return results

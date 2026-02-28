@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from backend.models.enums import Category, CheckStatus, Severity
-from backend.scanners.base import CheckResult, ScanCheck
+from backend.scanners.base import BaseScanner, CheckResult, ScanCheck
 from backend.schemas.platform_data import RepoAssessmentData
 
 
-class DASTScanner:
+class DASTScanner(BaseScanner):
     """Evaluates Dynamic Application Security Testing (DAST) practices.
 
     Category weight: 0.04.
@@ -14,7 +14,7 @@ class DASTScanner:
     category: Category = Category.dast
     weight: float = 0.04
 
-    _CHECKS: list[ScanCheck] = [
+    _CHECKS = (
         ScanCheck(
             check_id="DAST-001",
             check_name="DAST tool configured",
@@ -79,41 +79,26 @@ class DASTScanner:
             weight=0.5,
             description="DAST findings must be automatically imported into the project issue tracker for triage.",
         ),
-    ]
-
-    def checks(self) -> list[ScanCheck]:
-        """Return the full catalogue of DAST checks."""
-        return list(self._CHECKS)
+    )
 
     def evaluate(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Run every DAST-xxx check against *data* and return one result each."""
-        check_map = {c.check_id: c for c in self._CHECKS}
         results: list[CheckResult] = []
 
         # DAST-001: DAST tool configured
-        check = check_map["DAST-001"]
-        if data.has_dast_config:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.passed,
-                    detail="A DAST configuration file is present in the repository.",
-                )
+        results.append(
+            self._bool_check(
+                "DAST-001",
+                data.has_dast_config,
+                passed="A DAST configuration file is present in the repository.",
+                failed="No DAST configuration file was detected (e.g. ZAP config, Burp project file).",
             )
-        else:
-            results.append(
-                CheckResult(
-                    check=check,
-                    status=CheckStatus.failed,
-                    detail="No DAST configuration file was detected (e.g. ZAP config, Burp project file).",
-                )
-            )
+        )
 
         # DAST-002: DAST runs in pipeline (cannot verify directly via API)
-        check = check_map["DAST-002"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["DAST-002"],
                 status=CheckStatus.warning,
                 detail=(
                     "DAST pipeline integration could not be verified automatically. "
@@ -123,10 +108,9 @@ class DASTScanner:
         )
 
         # DAST-003: API security testing enabled (cannot verify directly via API)
-        check = check_map["DAST-003"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["DAST-003"],
                 status=CheckStatus.warning,
                 detail=(
                     "API security testing configuration could not be verified automatically. "
@@ -136,10 +120,9 @@ class DASTScanner:
         )
 
         # DAST-004: No critical DAST findings (cannot verify directly via API)
-        check = check_map["DAST-004"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["DAST-004"],
                 status=CheckStatus.warning,
                 detail=(
                     "Critical DAST findings could not be verified automatically. "
@@ -149,10 +132,9 @@ class DASTScanner:
         )
 
         # DAST-005: Authenticated scanning configured (cannot verify directly via API)
-        check = check_map["DAST-005"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["DAST-005"],
                 status=CheckStatus.warning,
                 detail=(
                     "Authenticated DAST scanning configuration could not be verified automatically. "
@@ -162,10 +144,9 @@ class DASTScanner:
         )
 
         # DAST-006: OWASP Top 10 coverage (cannot verify directly via API)
-        check = check_map["DAST-006"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["DAST-006"],
                 status=CheckStatus.warning,
                 detail=(
                     "OWASP Top 10 coverage could not be verified automatically. "
@@ -175,10 +156,9 @@ class DASTScanner:
         )
 
         # DAST-007: Regular scan schedule (cannot verify directly via API)
-        check = check_map["DAST-007"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["DAST-007"],
                 status=CheckStatus.warning,
                 detail=(
                     "DAST scan scheduling could not be verified automatically. "
@@ -188,10 +168,9 @@ class DASTScanner:
         )
 
         # DAST-008: DAST results integrated with issue tracker (cannot verify directly via API)
-        check = check_map["DAST-008"]
         results.append(
             CheckResult(
-                check=check,
+                check=self._check_map["DAST-008"],
                 status=CheckStatus.warning,
                 detail=(
                     "DAST-to-issue-tracker integration could not be verified automatically. "

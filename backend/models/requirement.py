@@ -22,13 +22,13 @@ class CustomRequirement(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    category: Mapped[Category] = mapped_column(nullable=False)
-    check_id: Mapped[str] = mapped_column(String, nullable=False)
-    title: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    severity: Mapped[Severity] = mapped_column(nullable=False)
-    evaluation_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    category: Mapped[Category] = mapped_column()
+    check_id: Mapped[str] = mapped_column(String)
+    title: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(Text)
+    severity: Mapped[Severity] = mapped_column()
+    evaluation_prompt: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relationships
     results: Mapped[list[RequirementResult]] = relationship(
@@ -56,9 +56,9 @@ class RequirementResult(UUIDMixin, Base):
         nullable=False,
         index=True,
     )
-    status: Mapped[CheckStatus] = mapped_column(nullable=False)
-    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
-    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[CheckStatus] = mapped_column()
+    detail: Mapped[str | None] = mapped_column(Text)
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     # Relationships
     requirement: Mapped[CustomRequirement] = relationship(
