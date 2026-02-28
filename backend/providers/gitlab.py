@@ -220,7 +220,7 @@ class GitLabProvider:
                 for p in projects:
                     try:
                         full_p = self._client.projects.get(p.id)
-                        full_p.files.get(file_path="SECURITY.md", ref=full_p.default_branch)
+                        full_p.files.get(file_path="SECURITY.md", ref=getattr(full_p, "default_branch", "main") or "main")
                         has_security_policy = True
                         break
                     except GitlabError:
@@ -251,13 +251,18 @@ class GitLabProvider:
 # ---------------------------------------------------------------------------
 
 
+def _default_branch(project: Any) -> str:
+    """Return the default branch name for a project, falling back to 'main'."""
+    return getattr(project, "default_branch", None) or "main"
+
+
 def _normalize_project(project: Any) -> NormalizedRepo:
     """Convert a python-gitlab Project object to a NormalizedRepo."""
     return NormalizedRepo(
         external_id=str(project.id),
         name=project.path_with_namespace.split("/")[-1] if "/" in project.path_with_namespace else project.path_with_namespace,
         url=project.web_url,
-        default_branch=getattr(project, "default_branch", None) or "main",
+        default_branch=_default_branch(project),
         is_private=project.visibility == "private",
         description=getattr(project, "description", None),
         language=None,  # GitLab requires a separate languages() call
@@ -370,7 +375,7 @@ def _fetch_ci_config(project: Any) -> list[CIWorkflow]:
     """Discover CI/CD configuration from .gitlab-ci.yml."""
     workflows: list[CIWorkflow] = []
     try:
-        ci_file = project.files.get(file_path=".gitlab-ci.yml", ref=project.default_branch)
+        ci_file = project.files.get(file_path=".gitlab-ci.yml", ref=_default_branch(project))
         raw_yaml = ci_file.decode().decode("utf-8")
         ci_data: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
     except GitlabError:
@@ -459,7 +464,7 @@ def _fetch_security_features(project: Any) -> SecurityFeatures:
     # Security policy
     for path in ("SECURITY.md", ".gitlab/SECURITY.md", "docs/SECURITY.md"):
         try:
-            project.files.get(file_path=path, ref=project.default_branch)
+            project.files.get(file_path=path, ref=_default_branch(project))
             has_security_policy = True
             break
         except GitlabError:
@@ -468,7 +473,7 @@ def _fetch_security_features(project: Any) -> SecurityFeatures:
     # Dependabot equivalent — check for renovate or dependency scanning
     for path in ("renovate.json", ".renovaterc", ".renovaterc.json", ".gitlab/dependabot.yml"):
         try:
-            project.files.get(file_path=path, ref=project.default_branch)
+            project.files.get(file_path=path, ref=_default_branch(project))
             dependabot = True
             break
         except GitlabError:
@@ -476,7 +481,7 @@ def _fetch_security_features(project: Any) -> SecurityFeatures:
 
     # GitLab SAST / secret detection — check CI config for includes
     try:
-        ci_file = project.files.get(file_path=".gitlab-ci.yml", ref=project.default_branch)
+        ci_file = project.files.get(file_path=".gitlab-ci.yml", ref=_default_branch(project))
         ci_content = ci_file.decode().decode("utf-8").lower()
         if "sast" in ci_content or "code_quality" in ci_content or "semgrep" in ci_content:
             code_scanning = True
@@ -574,7 +579,7 @@ def _fetch_file_flags(project: Any) -> dict[str, bool]:
         "has_dashboards_as_code": ["grafana/dashboards", "dashboards/", "monitoring/dashboards"],
     }
 
-    ref = getattr(project, "default_branch", "main") or "main"
+    ref = _default_branch(project)
 
     for flag, paths in candidate_paths.items():
         for path in paths:
