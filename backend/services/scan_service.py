@@ -134,10 +134,9 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
                 len(org_results),
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "run_scan: scan %s — org-level scanning failed: %s (continuing with repo scanning)",
+            logger.exception(
+                "run_scan: scan %s — org-level scanning failed (continuing with repo scanning)",
                 scan_id,
-                exc,
             )
 
         # ------------------------------------------------------------------
