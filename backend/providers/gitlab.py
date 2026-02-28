@@ -73,12 +73,52 @@ class GitLabProvider:
     # Protocol implementation
     # ------------------------------------------------------------------
 
+    def _resolve_group(self) -> Any:
+        """Resolve the configured group, trying direct lookup first then search.
+
+        ``python-gitlab``'s ``groups.get()`` expects either a numeric ID or
+        the **exact**, URL-encoded full path.  Users often enter just the
+        display name, a differently-cased variant, or omit a parent path.
+
+        Strategy:
+        1. Try ``groups.get(self._group)`` (direct by path or ID).
+        2. If 404, search for the group name and match case-insensitively.
+        """
+        try:
+            return self._client.groups.get(self._group)
+        except GitlabError:
+            pass
+
+        # Fallback: search and match
+        try:
+            results = self._client.groups.list(search=self._group, all=True)
+            for g in results:
+                path = getattr(g, "full_path", "") or ""
+                name = getattr(g, "name", "") or ""
+                if (
+                    path.lower() == self._group.lower()
+                    or name.lower() == self._group.lower()
+                ):
+                    logger.info(
+                        "Resolved group %r via search → full_path=%r (id=%s)",
+                        self._group,
+                        path,
+                        g.id,
+                    )
+                    self._group = path  # pin to canonical path for future calls
+                    return self._client.groups.get(g.id)
+        except GitlabError as exc:
+            logger.debug("Group search fallback failed for %r: %s", self._group, exc)
+
+        # Nothing found — raise a clear error
+        raise GitlabError(f"404: Group '{self._group}' not found")
+
     async def validate_connection(self) -> bool:
         """Test that the token can reach the target group."""
         try:
             def _validate() -> bool:
                 self._client.auth()
-                self._client.groups.get(self._group)
+                self._resolve_group()
                 return True
 
             return await self._run(_validate)
@@ -101,7 +141,7 @@ class GitLabProvider:
         """Enumerate all projects in the configured group."""
 
         def _fetch() -> list[NormalizedRepo]:
-            group = self._client.groups.get(self._group)
+            group = self._resolve_group()
             projects = group.projects.list(
                 include_subgroups=True,
                 all=True,
@@ -145,7 +185,7 @@ class GitLabProvider:
         """Collect group-level assessment data from GitLab."""
 
         def _fetch_group() -> OrgAssessmentData:
-            group = self._client.groups.get(self._group)
+            group = self._resolve_group()
 
             # Membership stats
             members = OrgMemberInfo(total_members=0, admin_count=0)
