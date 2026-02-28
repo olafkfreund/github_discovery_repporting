@@ -14,9 +14,12 @@ from backend.models.enums import ReportStatus
 
 
 class ReportCreate(BaseModel):
-    """Payload for generating a new report from a completed scan."""
+    """Payload for generating a new report from a completed scan.
 
-    scan_id: UUID
+    ``scan_id`` is provided via the URL path, so it is not required in the
+    request body.
+    """
+
     title: str | None = None
     template_id: UUID | None = None
 
