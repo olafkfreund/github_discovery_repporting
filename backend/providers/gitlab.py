@@ -114,28 +114,18 @@ class GitLabProvider:
         raise GitlabError(f"404: Group '{self._group}' not found")
 
     async def validate_connection(self) -> bool:
-        """Test that the token can reach the target group."""
-        try:
-            def _validate() -> bool:
-                self._client.auth()
-                self._resolve_group()
-                return True
+        """Test that the token can reach the target group.
 
-            return await self._run(_validate)
-        except GitlabError as exc:
-            logger.warning(
-                "GitLab connection validation failed for group=%r: %s",
-                self._group,
-                exc,
-            )
-            return False
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "Unexpected error validating GitLab connection for group=%r: %s",
-                self._group,
-                exc,
-            )
-            return False
+        Returns ``True`` on success.  Raises on failure so that callers
+        can inspect the error message (e.g. the validate endpoint).
+        """
+
+        def _validate() -> bool:
+            self._client.auth()
+            self._resolve_group()
+            return True
+
+        return await self._run(_validate)
 
     async def list_repos(self) -> list[NormalizedRepo]:
         """Enumerate all projects in the configured group."""

@@ -212,9 +212,19 @@ async def validate_connection(
     try:
         is_valid = await provider.validate_connection()
     except Exception as exc:  # noqa: BLE001
+        msg = str(exc)
+        if "401" in msg or "Unauthorized" in msg:
+            detail = "Authentication failed — the access token is invalid or expired."
+        elif "404" in msg or "Not Found" in msg:
+            detail = (
+                f"Group or organization '{connection.org_or_group}' not found. "
+                "Check the name and ensure the token has access."
+            )
+        else:
+            detail = msg or f"{type(exc).__name__}: {exc!r}"
         return {
             "valid": False,
-            "message": f"Validation raised an unexpected error: {exc}",
+            "message": detail,
         }
 
     if is_valid:
