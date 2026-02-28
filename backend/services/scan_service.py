@@ -227,10 +227,17 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
         scan.status = ScanStatus.failed
         # Produce a user-friendly error for common failures.
         msg = str(exc)
-        if "401" in msg or "Unauthorized" in msg:
+        exc_type = type(exc).__name__
+        if exc_type == "InvalidToken" or "InvalidToken" in msg:
+            scan.error_message = (
+                "Stored credentials could not be decrypted — the encryption key "
+                "may have changed. Please edit this connection and re-enter your "
+                "access token."
+            )
+        elif "401" in msg or "Unauthorized" in msg:
             scan.error_message = (
                 "Authentication failed — the access token is invalid or expired. "
-                "Please delete this connection and re-add it with a valid token."
+                "Please edit this connection and update the access token."
             )
         elif "403" in msg or "Forbidden" in msg:
             scan.error_message = (
@@ -243,7 +250,7 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
                 "is spelled correctly and the token has access to it."
             )
         else:
-            scan.error_message = msg
+            scan.error_message = msg or f"{type(exc).__name__}: {exc!r}"
 
     finally:
         await session.commit()
