@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import settings
 from backend.database import get_db
 from backend.models.report import Report, ReportTemplate
 from backend.models.scan import Scan
@@ -195,7 +196,15 @@ async def download_report(
             detail=f"Report {report_id} has no PDF available yet.",
         )
 
-    pdf_path = Path(report.pdf_path)
+    # The stored pdf_path is relative to REPORTS_DIR. Reconstruct the
+    # absolute path; fall back to treating it as-is for legacy records
+    # that may have stored an absolute path.
+    stored = Path(report.pdf_path)
+    if stored.is_absolute():
+        pdf_path = stored
+    else:
+        pdf_path = Path(settings.REPORTS_DIR).resolve() / stored
+
     if not pdf_path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -205,11 +214,10 @@ async def download_report(
             ),
         )
 
-    filename = pdf_path.name
     return FileResponse(
         path=str(pdf_path),
         media_type="application/pdf",
-        filename=filename,
+        filename=pdf_path.name,
     )
 
 
