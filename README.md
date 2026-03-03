@@ -1,4 +1,4 @@
-# DevOps Discovery & Reporting Platform
+# BPS-tool -- DevOps Discovery & Reporting Platform
 
 Multi-platform DevOps assessment tool that scans GitHub, GitLab, and Azure DevOps organizations, evaluates repositories against industry best practices across 16 security and operational domains, uses Claude AI for analysis, and generates comprehensive PDF reports.
 
@@ -7,10 +7,43 @@ Multi-platform DevOps assessment tool that scans GitHub, GitLab, and Azure DevOp
 - **16-Domain Scanner Engine** -- 169 automated checks across security, CI/CD, compliance, container security, SDLC process, and more
 - **Multi-Platform Support** -- GitHub (implemented), GitLab and Azure DevOps (provider stubs ready)
 - **Org + Repo Scanning** -- organization-level security posture assessment alongside per-repository analysis
+- **Configurable Scan Profiles** -- per-customer profiles to toggle categories/checks, adjust weights, and tune thresholds
 - **Industry Benchmarks** -- automatic alignment scoring against OpenSSF Scorecard, SLSA, CIS Software Supply Chain, and DORA metrics
 - **AI-Powered Analysis** -- Claude Opus 4.6 generates executive summaries, prioritized recommendations, and per-domain narratives
 - **PDF Reports** -- professional assessment reports with executive summary, category breakdowns, benchmark comparisons, and full findings appendix
 - **React Dashboard** -- real-time scan status, category score visualization, and findings filtering
+
+## Screenshots
+
+### Dashboard
+Overview with total customers, scans, reports, and recent scan activity.
+
+![Dashboard](docs/img/dashboard.png)
+
+### Customer Detail -- Scan History & Reports
+Scan history with status tracking, report generation, and the new "Manage Profiles" link.
+
+![Customer Detail](docs/img/customer-detail.png)
+
+### Scan Profile Editor
+Configure which categories, checks, and thresholds apply per customer. All 16 domains with weight controls.
+
+![Scan Profile Editor](docs/img/scan-profiles-editor.png)
+
+### Scan Details -- Category Scores
+Per-category scoring breakdown showing pass/fail counts and weighted progress bars.
+
+![Scan Details](docs/img/scan-details.png)
+
+### Findings
+Full findings table with 169 checks, filterable by category, severity, and status.
+
+![Findings](docs/img/findings.png)
+
+### Reports
+Generated assessment reports with scores, DORA level, and PDF download.
+
+![Reports](docs/img/reports.png)
 
 ## Architecture
 
@@ -130,7 +163,9 @@ Scan results are automatically mapped to four industry frameworks:
 | Health | `GET /api/health` | Liveness probe |
 | Customers | `/api/customers/` | CRUD for assessment customers |
 | Connections | `/api/customers/{id}/connections` | Platform credential management |
-| Scans | `POST /api/customers/{id}/scans` | Trigger assessment scan |
+| Scan Profiles | `/api/customers/{id}/scan-profiles` | Per-customer scan configuration profiles |
+| Scanner Registry | `GET /api/scanners/registry` | All categories, checks, and threshold defaults |
+| Scans | `POST /api/customers/{id}/scans` | Trigger assessment scan (with optional profile) |
 | Findings | `GET /api/scans/{id}/findings` | Query scan results with filters |
 | Scores | `GET /api/scans/{id}/scores` | Per-category score breakdown |
 | Reports | `POST /api/scans/{id}/reports` | Generate AI-powered PDF report |
