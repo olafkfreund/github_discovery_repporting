@@ -31,8 +31,58 @@ export interface Scan {
   completed_at: string | null
   total_repos: number
   error_message: string | null
+  scan_config: Record<string, unknown> | null
+  profile_id: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ScanProfile {
+  id: string
+  customer_id: string
+  name: string
+  description: string | null
+  is_default: boolean
+  config: ScanProfileConfig
+  created_at: string
+  updated_at: string
+}
+
+export interface ScanProfileConfig {
+  categories?: Record<string, CategoryConfig>
+}
+
+export interface CategoryConfig {
+  enabled?: boolean
+  weight?: number
+  checks?: Record<string, CheckConfig>
+}
+
+export interface CheckConfig {
+  enabled?: boolean
+  thresholds?: Record<string, number>
+}
+
+export interface ThresholdInfo {
+  key: string
+  default_value: number
+}
+
+export interface CheckInfo {
+  check_id: string
+  check_name: string
+  severity: string
+  weight: number
+  description: string
+  thresholds: ThresholdInfo[]
+}
+
+export interface CategoryRegistryInfo {
+  category: string
+  display_name: string
+  weight: number
+  scope: string
+  checks: CheckInfo[]
 }
 
 export interface ScanScore {

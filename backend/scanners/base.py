@@ -88,6 +88,19 @@ class BaseScanner:
 
     _CHECKS: ClassVar[tuple[ScanCheck, ...]] = ()
 
+    # Injected by ScanOrchestrator from the scan profile config.
+    # Maps check_id -> {"thresholds": {...}, "enabled": bool, ...}.
+    _check_config: dict[str, Any] = {}
+
+    def _threshold(self, check_id: str, key: str, default: float) -> float:
+        """Return a threshold value from the profile config, falling back to *default*.
+
+        Scanners call this instead of hard-coding threshold constants so that
+        scan profiles can override them at runtime.
+        """
+        check_cfg = self._check_config.get(check_id, {})
+        return float(check_cfg.get("thresholds", {}).get(key, default))
+
     def checks(self) -> list[ScanCheck]:
         """Return the full list of :class:`ScanCheck` objects this scanner owns."""
         return list(self._CHECKS)

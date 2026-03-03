@@ -11,6 +11,7 @@ from backend.models.customer import PlatformConnection
 from backend.models.enums import Category, CheckStatus, ScanStatus, Severity
 from backend.models.finding import Finding, ScanScore
 from backend.models.scan import Scan
+from backend.models.scan_profile import ScanProfile
 from backend.schemas.finding import FindingResponse
 from backend.schemas.scan import ScanCreate, ScanResponse, ScanScoreResponse
 from backend.services import customer_service
@@ -105,11 +106,30 @@ async def trigger_scan(
             ),
         )
 
+    # If a profile is specified, load it and snapshot its config.
+    scan_config = payload.scan_config
+    profile_id = payload.profile_id
+    if profile_id is not None:
+        profile_result = await db.execute(
+            select(ScanProfile).where(
+                ScanProfile.id == profile_id,
+                ScanProfile.customer_id == customer_id,
+            )
+        )
+        profile = profile_result.scalar_one_or_none()
+        if profile is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Scan profile {profile_id} not found for customer {customer_id}.",
+            )
+        scan_config = profile.config
+
     scan = Scan(
         customer_id=customer_id,
         connection_id=payload.connection_id,
         status=ScanStatus.pending,
-        scan_config=payload.scan_config,
+        scan_config=scan_config,
+        profile_id=profile_id,
     )
     db.add(scan)
     await db.commit()

@@ -221,12 +221,14 @@ class IdentityAccessScanner(BaseScanner):
                 "total_members": members.total_members,
                 "admin_ratio_pct": admin_pct,
             }
-            if admin_ratio <= 0.05:
+            max_ratio = self._threshold("IAM-003", "max_admin_ratio", 0.05)
+            max_ratio_pct = round(max_ratio * 100)
+            if admin_ratio <= max_ratio:
                 results.append(
                     CheckResult(
                         check=self._check_map["IAM-003"],
                         status=CheckStatus.passed,
-                        detail=f"Admin ratio is {admin_pct}% ({members.admin_count}/{members.total_members}), within the 5% threshold.",
+                        detail=f"Admin ratio is {admin_pct}% ({members.admin_count}/{members.total_members}), within the {max_ratio_pct}% threshold.",
                         evidence=evidence,
                     )
                 )
@@ -237,7 +239,7 @@ class IdentityAccessScanner(BaseScanner):
                         status=CheckStatus.failed,
                         detail=(
                             f"Admin ratio is {admin_pct}% ({members.admin_count}/{members.total_members}), "
-                            "exceeding the 5% threshold. Review and reduce the number of organisation admins."
+                            f"exceeding the {max_ratio_pct}% threshold. Review and reduce the number of organisation admins."
                         ),
                         evidence=evidence,
                     )

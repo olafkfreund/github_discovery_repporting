@@ -39,6 +39,11 @@ class Scan(UUIDMixin, TimestampMixin, Base):
     total_repos: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text)
     scan_config: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scan_profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
 
     # Relationships
     customer: Mapped[Customer] = relationship(

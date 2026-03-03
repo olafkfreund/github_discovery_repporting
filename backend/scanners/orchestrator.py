@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from backend.models.enums import Category, CheckStatus
-from backend.scanners.base import CheckResult, OrgScanner, Scanner
+from backend.scanners.base import BaseScanner, CheckResult, OrgScanner, Scanner
 from backend.scanners.cicd import CICDScanner
 from backend.scanners.code_quality import CodeQualityScanner
 from backend.scanners.collaboration import CollaborationScanner
@@ -56,12 +57,22 @@ class CategoryScore:
         return (self.score / self.max_score) * 100.0
 
 
+def _category_key(scanner: OrgScanner | Scanner) -> str:
+    """Return the string key for a scanner's category."""
+    cat = scanner.category
+    return cat.value if isinstance(cat, Category) else str(cat)
+
+
 class ScanOrchestrator:
     """Coordinates all 16 scanner instances and produces a unified assessment.
 
+    When *scan_config* is provided, the orchestrator filters out disabled
+    categories/checks, overrides category weights, and injects per-check
+    threshold configuration into each scanner.
+
     Usage::
 
-        orchestrator = ScanOrchestrator()
+        orchestrator = ScanOrchestrator(scan_config=scan.scan_config)
 
         # Org-level scanning
         org_results = orchestrator.scan_org(org_data)
@@ -75,15 +86,13 @@ class ScanOrchestrator:
         overall = orchestrator.calculate_overall_score(category_scores)
     """
 
-    def __init__(self) -> None:
-        # Org-level scanners (implement evaluate_org)
-        self._org_scanners: list[OrgScanner] = [
+    def __init__(self, scan_config: dict[str, Any] | None = None) -> None:
+        # Instantiate all scanners first.
+        all_org: list[OrgScanner] = [
             PlatformArchScanner(),
             IdentityAccessScanner(),
         ]
-
-        # Repo-level scanners (implement evaluate)
-        self._repo_scanners: list[Scanner] = [
+        all_repo: list[Scanner] = [
             RepoGovernanceScanner(),
             CICDScanner(),
             SecretsMgmtScanner(),
@@ -100,6 +109,73 @@ class ScanOrchestrator:
             MigrationScanner(),
         ]
 
+        self._disabled_checks: set[str] = set()
+
+        categories_cfg: dict[str, Any] = {}
+        if scan_config:
+            categories_cfg = scan_config.get("categories", {})
+
+        # Apply per-category config: enable/disable, weight override, check config.
+        self._org_scanners: list[OrgScanner] = []
+        for scanner in all_org:
+            cat_key = _category_key(scanner)
+            cat_cfg = categories_cfg.get(cat_key, {})
+            if cat_cfg.get("enabled", True) is False:
+                continue
+            if "weight" in cat_cfg:
+                scanner.weight = float(cat_cfg["weight"])
+            self._apply_check_config(scanner, cat_cfg)
+            self._org_scanners.append(scanner)
+
+        self._repo_scanners: list[Scanner] = []
+        for repo_scanner in all_repo:
+            cat_key = _category_key(repo_scanner)
+            cat_cfg = categories_cfg.get(cat_key, {})
+            if cat_cfg.get("enabled", True) is False:
+                continue
+            if "weight" in cat_cfg:
+                repo_scanner.weight = float(cat_cfg["weight"])
+            self._apply_check_config(repo_scanner, cat_cfg)
+            self._repo_scanners.append(repo_scanner)
+
+        # Renormalise weights so enabled scanners sum to 1.0.
+        if categories_cfg:
+            self._renormalise_weights()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _apply_check_config(
+        self, scanner: OrgScanner | Scanner, cat_cfg: dict[str, Any]
+    ) -> None:
+        """Inject check-level config (thresholds, disable flags) into a scanner."""
+        checks_cfg: dict[str, Any] = cat_cfg.get("checks", {})
+        if isinstance(scanner, BaseScanner):
+            scanner._check_config = checks_cfg
+        # Collect individually disabled checks.
+        for check_id, check_cfg in checks_cfg.items():
+            if isinstance(check_cfg, dict) and check_cfg.get("enabled", True) is False:
+                self._disabled_checks.add(check_id)
+
+    def _renormalise_weights(self) -> None:
+        """Adjust scanner weights so enabled categories sum to 1.0."""
+        total = sum(s.weight for s in self._org_scanners) + sum(
+            s.weight for s in self._repo_scanners
+        )
+        if total <= 0:
+            return
+        for org_s in self._org_scanners:
+            org_s.weight = org_s.weight / total
+        for repo_s in self._repo_scanners:
+            repo_s.weight = repo_s.weight / total
+
+    def _filter_results(self, results: list[CheckResult]) -> list[CheckResult]:
+        """Remove results for individually disabled checks."""
+        if not self._disabled_checks:
+            return results
+        return [r for r in results if r.check.check_id not in self._disabled_checks]
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -109,14 +185,14 @@ class ScanOrchestrator:
         results: list[CheckResult] = []
         for scanner in self._org_scanners:
             results.extend(scanner.evaluate_org(data))
-        return results
+        return self._filter_results(results)
 
     def scan_repo(self, data: RepoAssessmentData) -> list[CheckResult]:
         """Run every repo-level scanner against *data* and return the combined results."""
         results: list[CheckResult] = []
         for scanner in self._repo_scanners:
             results.extend(scanner.evaluate(data))
-        return results
+        return self._filter_results(results)
 
     @property
     def all_scanners(self) -> list[OrgScanner | Scanner]:

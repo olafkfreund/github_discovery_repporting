@@ -21,6 +21,7 @@ from backend.models.finding import Finding, ScanScore
 from backend.models.report import Report, ReportTemplate
 from backend.models.requirement import CustomRequirement, RequirementResult
 from backend.models.scan import Scan, ScanRepo
+from backend.models.scan_profile import ScanProfile
 
 __all__ = [
     # Base classes
@@ -44,6 +45,7 @@ __all__ = [
     "ReportTemplate",
     "RequirementResult",
     "Scan",
+    "ScanProfile",
     "ScanRepo",
     "ScanScore",
 ]

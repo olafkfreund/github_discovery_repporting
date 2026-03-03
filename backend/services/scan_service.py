@@ -96,7 +96,7 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
         connection: PlatformConnection = scan.connection
         provider = create_provider(connection)
 
-        orchestrator = ScanOrchestrator()
+        orchestrator = ScanOrchestrator(scan_config=scan.scan_config)
 
         # Accumulate all CheckResult objects across org + repos for scoring.
         from backend.scanners.base import CheckResult  # noqa: PLC0415

@@ -157,7 +157,9 @@ class SDLCProcessScanner(BaseScanner):
                 "reviewed_pr_count": reviewed_count,
                 "review_coverage_pct": coverage_pct,
             }
-            if coverage > 0.75:
+            pass_thresh = self._threshold("SDLC-003", "pass_threshold", 0.75)
+            warn_thresh = self._threshold("SDLC-003", "warning_threshold", 0.50)
+            if coverage > pass_thresh:
                 results.append(
                     CheckResult(
                         check=self._check_map["SDLC-003"],
@@ -166,12 +168,12 @@ class SDLCProcessScanner(BaseScanner):
                         evidence=evidence,
                     )
                 )
-            elif coverage > 0.50:
+            elif coverage > warn_thresh:
                 results.append(
                     CheckResult(
                         check=self._check_map["SDLC-003"],
                         status=CheckStatus.warning,
-                        detail=f"Only {coverage_pct}% of merged PRs were reviewed (threshold: >75%).",
+                        detail=f"Only {coverage_pct}% of merged PRs were reviewed (threshold: >{round(pass_thresh * 100)}%).",
                         evidence=evidence,
                     )
                 )
@@ -201,21 +203,23 @@ class SDLCProcessScanner(BaseScanner):
                 "pr_count": len(recent_prs),
                 "average_changed_lines": avg_size_rounded,
             }
-            if avg_size < 500:
+            size_pass = self._threshold("SDLC-004", "pass_threshold", 500)
+            size_warn = self._threshold("SDLC-004", "warning_threshold", 1000)
+            if avg_size < size_pass:
                 results.append(
                     CheckResult(
                         check=self._check_map["SDLC-004"],
                         status=CheckStatus.passed,
-                        detail=f"Average PR size is {avg_size_rounded} lines (threshold: <500).",
+                        detail=f"Average PR size is {avg_size_rounded} lines (threshold: <{int(size_pass)}).",
                         evidence=evidence,
                     )
                 )
-            elif avg_size < 1000:
+            elif avg_size < size_warn:
                 results.append(
                     CheckResult(
                         check=self._check_map["SDLC-004"],
                         status=CheckStatus.warning,
-                        detail=f"Average PR size is {avg_size_rounded} lines (above 500-line threshold).",
+                        detail=f"Average PR size is {avg_size_rounded} lines (above {int(size_pass)}-line threshold).",
                         evidence=evidence,
                     )
                 )
@@ -224,7 +228,7 @@ class SDLCProcessScanner(BaseScanner):
                     CheckResult(
                         check=self._check_map["SDLC-004"],
                         status=CheckStatus.failed,
-                        detail=f"Average PR size is {avg_size_rounded} lines, exceeding 1000 lines.",
+                        detail=f"Average PR size is {avg_size_rounded} lines, exceeding {int(size_warn)} lines.",
                         evidence=evidence,
                     )
                 )

@@ -120,14 +120,15 @@ class CodeQualityScanner(BaseScanner):
         # CQ-003 (coverage tooling)
         results.append(self._manual_review("CQ-003", "Code-coverage tooling presence"))
 
-        # CQ-004 (code coverage > 60%)
+        # CQ-004 (code coverage threshold)
+        min_cov = self._threshold("CQ-004", "min_coverage_pct", 60.0)
         if data.test_coverage_percent is not None:
-            if data.test_coverage_percent >= 60.0:
+            if data.test_coverage_percent >= min_cov:
                 results.append(
                     CheckResult(
                         check=self._check_map["CQ-004"],
                         status=CheckStatus.passed,
-                        detail=f"Code coverage is {data.test_coverage_percent:.1f}% (threshold: 60%).",
+                        detail=f"Code coverage is {data.test_coverage_percent:.1f}% (threshold: {min_cov:.0f}%).",
                         evidence={"coverage_percent": data.test_coverage_percent},
                     )
                 )
@@ -136,7 +137,7 @@ class CodeQualityScanner(BaseScanner):
                     CheckResult(
                         check=self._check_map["CQ-004"],
                         status=CheckStatus.failed,
-                        detail=f"Code coverage is {data.test_coverage_percent:.1f}% (below 60% threshold).",
+                        detail=f"Code coverage is {data.test_coverage_percent:.1f}% (below {min_cov:.0f}% threshold).",
                         evidence={"coverage_percent": data.test_coverage_percent},
                     )
                 )

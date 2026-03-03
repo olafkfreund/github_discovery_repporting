@@ -18,6 +18,7 @@ class ScanCreate(BaseModel):
 
     connection_id: UUID
     scan_config: dict[str, Any] | None = None
+    profile_id: UUID | None = None
 
 
 class ScanResponse(BaseModel):
@@ -34,6 +35,7 @@ class ScanResponse(BaseModel):
     total_repos: int
     error_message: str | None
     scan_config: dict[str, Any] | None
+    profile_id: UUID | None
     created_at: datetime
     updated_at: datetime
 

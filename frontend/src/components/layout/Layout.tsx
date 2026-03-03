@@ -8,6 +8,9 @@ const PAGE_TITLES: Record<string, string> = {
 
 function getPageTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
+  if (pathname.startsWith('/customers/') && pathname.endsWith('/scan-profiles')) {
+    return 'Scan Profiles'
+  }
   if (pathname.startsWith('/customers/') && pathname.split('/').length === 3) {
     return 'Customer Detail'
   }

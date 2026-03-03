@@ -6,6 +6,7 @@ import type {
   Connection,
   Scan,
   Report,
+  ScanProfile,
   ConnectionCreatePayload,
   ConnectionUpdatePayload,
 } from '../types'
@@ -360,8 +361,11 @@ export default function CustomerDetailPage() {
   const [validatingId, setValidatingId] = useState<string | null>(null)
   const [deletingConnId, setDeletingConnId] = useState<string | null>(null)
 
+  const [scanProfiles, setScanProfiles] = useState<ScanProfile[]>([])
+
   const [showScanForm, setShowScanForm] = useState(false)
   const [selectedConnectionId, setSelectedConnectionId] = useState('')
+  const [selectedProfileId, setSelectedProfileId] = useState('')
   const [triggeringScan, setTriggeringScan] = useState(false)
 
   const [generatingReportScanId, setGeneratingReportScanId] = useState<string | null>(null)
@@ -371,16 +375,18 @@ export default function CustomerDetailPage() {
     setLoading(true)
     setError(null)
     try {
-      const [cust, conns, scanList, reportList] = await Promise.all([
+      const [cust, conns, scanList, reportList, profileList] = await Promise.all([
         api.getCustomer(id),
         api.listConnections(id),
         api.listScans(id),
         api.listReports(id),
+        api.listScanProfiles(id),
       ])
       setCustomer(cust)
       setConnections(conns)
       setScans(scanList)
       setReports(reportList)
+      setScanProfiles(profileList)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load customer')
     } finally {
@@ -424,10 +430,11 @@ export default function CustomerDetailPage() {
     if (!id || !selectedConnectionId) return
     setTriggeringScan(true)
     try {
-      const scan = await api.triggerScan(id, selectedConnectionId)
+      const scan = await api.triggerScan(id, selectedConnectionId, selectedProfileId || undefined)
       setScans((prev) => [scan, ...prev])
       setShowScanForm(false)
       setSelectedConnectionId('')
+      setSelectedProfileId('')
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to trigger scan')
     } finally {
@@ -600,7 +607,15 @@ export default function CustomerDetailPage() {
       {/* Scans */}
       <div className="bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-800">Scan History</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-gray-800">Scan History</h3>
+            <Link
+              to={`/customers/${customer.id}/scan-profiles`}
+              className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+            >
+              Manage Profiles
+            </Link>
+          </div>
           <button
             onClick={() => setShowScanForm((v) => !v)}
             disabled={activeConnections.length === 0}
@@ -630,6 +645,20 @@ export default function CustomerDetailPage() {
                   <option value="">— choose connection —</option>
                   {activeConnections.map((c) => (
                     <option key={c.id} value={c.id}>{c.display_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Scan Profile (optional)</label>
+                <select
+                  value={selectedProfileId}
+                  onChange={(e) => setSelectedProfileId(e.target.value)}
+                  className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                             focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="">— all checks (default) —</option>
+                  {scanProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
               </div>

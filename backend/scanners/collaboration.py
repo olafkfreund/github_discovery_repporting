@@ -146,7 +146,9 @@ class CollaborationScanner(BaseScanner):
                 "reviewed_pr_count": reviewed_count,
                 "review_coverage_pct": coverage_pct,
             }
-            if coverage > 0.90:
+            pass_thresh = self._threshold("COLLAB-006", "pass_threshold", 0.90)
+            warn_thresh = self._threshold("COLLAB-006", "warning_threshold", 0.75)
+            if coverage > pass_thresh:
                 results.append(
                     CheckResult(
                         check=self._check_map["COLLAB-006"],
@@ -155,12 +157,12 @@ class CollaborationScanner(BaseScanner):
                         evidence=evidence,
                     )
                 )
-            elif coverage > 0.75:
+            elif coverage > warn_thresh:
                 results.append(
                     CheckResult(
                         check=self._check_map["COLLAB-006"],
                         status=CheckStatus.warning,
-                        detail=f"{coverage_pct}% of merged PRs received reviews (threshold: >90%).",
+                        detail=f"{coverage_pct}% of merged PRs received reviews (threshold: >{round(pass_thresh * 100)}%).",
                         evidence=evidence,
                     )
                 )

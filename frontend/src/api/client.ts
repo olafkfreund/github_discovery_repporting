@@ -9,6 +9,9 @@ import type {
   Finding,
   Report,
   DashboardStats,
+  ScanProfile,
+  ScanProfileConfig,
+  CategoryRegistryInfo,
 } from '../types'
 
 const BASE_URL = '/api'
@@ -80,11 +83,39 @@ export const api = {
       method: 'POST',
     }),
 
+  // Scan Profiles
+  getScannerRegistry: () =>
+    request<CategoryRegistryInfo[]>('/scanners/registry'),
+
+  listScanProfiles: (customerId: string) =>
+    request<ScanProfile[]>(`/customers/${customerId}/scan-profiles`),
+
+  createScanProfile: (customerId: string, data: { name: string; description?: string; is_default?: boolean; config: ScanProfileConfig }) =>
+    request<ScanProfile>(`/customers/${customerId}/scan-profiles`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getScanProfile: (id: string) =>
+    request<ScanProfile>(`/scan-profiles/${id}`),
+
+  updateScanProfile: (id: string, data: { name?: string; description?: string; is_default?: boolean; config?: ScanProfileConfig }) =>
+    request<ScanProfile>(`/scan-profiles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteScanProfile: (id: string) =>
+    request<void>(`/scan-profiles/${id}`, { method: 'DELETE' }),
+
   // Scans
-  triggerScan: (customerId: string, connectionId: string) =>
+  triggerScan: (customerId: string, connectionId: string, profileId?: string) =>
     request<Scan>(`/customers/${customerId}/scans`, {
       method: 'POST',
-      body: JSON.stringify({ connection_id: connectionId }),
+      body: JSON.stringify({
+        connection_id: connectionId,
+        ...(profileId ? { profile_id: profileId } : {}),
+      }),
     }),
 
   listScans: (customerId: string) =>

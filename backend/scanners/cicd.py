@@ -327,21 +327,24 @@ class CICDScanner(BaseScanner):
                     "success_runs": success_count,
                     "success_rate_pct": rate_pct,
                 }
-                if rate >= 0.95:
+                pass_thresh = self._threshold("CICD-008", "pass_threshold", 0.95)
+                warn_thresh = self._threshold("CICD-008", "warning_threshold", 0.80)
+                pass_pct = round(pass_thresh * 100)
+                if rate >= pass_thresh:
                     results.append(
                         CheckResult(
                             check=self._check_map["CICD-008"],
                             status=CheckStatus.passed,
-                            detail=f"Pipeline success rate is {rate_pct}% (threshold: 95%).",
+                            detail=f"Pipeline success rate is {rate_pct}% (threshold: {pass_pct}%).",
                             evidence=evidence,
                         )
                     )
-                elif rate >= 0.80:
+                elif rate >= warn_thresh:
                     results.append(
                         CheckResult(
                             check=self._check_map["CICD-008"],
                             status=CheckStatus.warning,
-                            detail=f"Pipeline success rate is {rate_pct}% (below 95% threshold).",
+                            detail=f"Pipeline success rate is {rate_pct}% (below {pass_pct}% threshold).",
                             evidence=evidence,
                         )
                     )
@@ -373,12 +376,13 @@ class CICDScanner(BaseScanner):
                 "average_duration_minutes": avg_minutes,
                 "sample_size": len(timed_runs),
             }
-            if avg_seconds < 600:
+            max_secs = self._threshold("CICD-009", "max_seconds", 600)
+            if avg_seconds < max_secs:
                 results.append(
                     CheckResult(
                         check=self._check_map["CICD-009"],
                         status=CheckStatus.passed,
-                        detail=f"Average build time is {avg_minutes} min (threshold: 10 min).",
+                        detail=f"Average build time is {avg_minutes} min (threshold: {round(max_secs / 60)} min).",
                         evidence=evidence,
                     )
                 )
@@ -387,7 +391,7 @@ class CICDScanner(BaseScanner):
                     CheckResult(
                         check=self._check_map["CICD-009"],
                         status=CheckStatus.failed,
-                        detail=f"Average build time is {avg_minutes} min, exceeding the 10-minute threshold.",
+                        detail=f"Average build time is {avg_minutes} min, exceeding the {round(max_secs / 60)}-minute threshold.",
                         evidence=evidence,
                     )
                 )
