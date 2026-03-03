@@ -261,6 +261,7 @@ async def generate_report_for_scan(
                 scan_results=check_results,
                 category_scores=category_scores,
                 overall_score=overall_score,
+                platform=connection.platform,
             )
 
             # ------------------------------------------------------------------
@@ -279,6 +280,7 @@ async def generate_report_for_scan(
                 overall_score=overall_score,
                 findings=check_results,
                 dora_level=classify_dora_level(overall_score),
+                platform=connection.platform,
             )
 
             # Store the path relative to the configured reports directory so

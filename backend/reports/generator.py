@@ -29,9 +29,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from backend.analysis.platform_context import get_platform_context
 from backend.analysis.schemas import AnalysisResult
 from backend.config import settings
-from backend.models.enums import Category
+from backend.models.enums import Category, Platform
 from backend.reports.pdf import PDFRenderer
 from backend.scanners.base import CheckResult
 from backend.scanners.orchestrator import CategoryScore
@@ -163,6 +164,7 @@ class ReportGenerator:
         overall_score: float,
         findings: list[CheckResult],
         dora_level: str,
+        platform: Platform = Platform.github,
     ) -> Path:
         """Generate a PDF report for a completed scan.
 
@@ -206,6 +208,7 @@ class ReportGenerator:
             overall_score=overall_score,
             findings_list=findings_list,
             dora_level=dora_level,
+            platform=platform,
         )
 
         # Render HTML.
@@ -241,6 +244,7 @@ class ReportGenerator:
         overall_score: float,
         findings_list: list[dict],
         dora_level: str,
+        platform: Platform = Platform.github,
     ) -> dict:
         """Assemble the complete template context dictionary.
 
@@ -265,13 +269,19 @@ class ReportGenerator:
             b.model_dump() for b in analysis_result.benchmark_comparisons
         ]
 
+        platform_ctx = get_platform_context(platform)
+
         return {
             # Cover / header metadata
-            "report_title": f"DevOps Maturity Assessment — {org_name}",
+            "report_title": f"{platform_ctx['display_name']} DevOps Maturity Assessment — {org_name}",
             "customer_name": customer_name,
             "org_name": org_name,
             "scan_id": scan_id_short,
             "generated_at": generated_at,
+            # Platform context
+            "platform": platform.value,
+            "platform_display_name": platform_ctx["display_name"],
+            "platform_context": platform_ctx,
             # Scores
             "overall_score": overall_score,
             "dora_level": dora_level,

@@ -34,6 +34,11 @@ The placeholder keys used in :data:`USER_PROMPT_TEMPLATE` are:
     A pre-formatted text block of passed checks, produced by
     :meth:`~backend.analysis.analyzer.DevOpsAnalyzer._format_passed_checks`.
 
+``{platform_context}``
+    A pre-formatted text block describing the scanned platform's specific
+    features, terminology, and best-practice references, produced by
+    :func:`~backend.analysis.platform_context.get_platform_context`.
+
 ``{benchmark_data}``
     A pre-formatted text block of all benchmark framework results, produced
     by
@@ -105,6 +110,44 @@ must be parseable by `json.loads()` without modification.\
 """
 
 # ---------------------------------------------------------------------------
+# Platform context template
+# ---------------------------------------------------------------------------
+
+PLATFORM_CONTEXT_TEMPLATE: str = """\
+## Platform context
+
+This organisation was scanned on **{display_name}**.  Use the following \
+platform-specific terminology and features throughout your analysis:
+
+- **CI/CD system:** {ci_cd_name}
+- **Branch protection:** {branch_protection_name}
+- **Merge mechanism:** {merge_mechanism}
+- **Security suite:** {security_suite}
+- **SAST tool:** {sast_tool}
+- **Dependency scanning:** {dependency_tool}
+- **Container registry:** {container_registry}
+- **Secret scanning:** {secret_scanning}
+
+### Terminology mapping
+
+Use these platform-specific terms instead of generic equivalents:
+
+- Pipeline \u2192 {terminology[pipeline]}
+- Merge request \u2192 {terminology[merge_request]}
+- Pipeline config file \u2192 {terminology[pipeline_file]}
+- Approval rules \u2192 {terminology[approval_rules]}
+- Project \u2192 {terminology[project]}
+- Group \u2192 {terminology[group]}
+
+### Platform best practices
+
+Reference these {display_name}-specific practices in your recommendations \
+where relevant:
+
+{best_practices_list}\
+"""
+
+# ---------------------------------------------------------------------------
 # User prompt template
 # ---------------------------------------------------------------------------
 
@@ -119,6 +162,10 @@ produce a comprehensive assessment report.
 - **Organisation:** {org_name}
 - **Repositories scanned:** {total_repos}
 - **Overall weighted score:** {overall_score}/100
+
+---
+
+{platform_context}
 
 ---
 

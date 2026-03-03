@@ -25,7 +25,8 @@ from typing import Any
 from pydantic import ValidationError
 
 from backend.analysis.client import AnalysisClient, AnalysisClientError, analysis_client
-from backend.analysis.prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
+from backend.analysis.platform_context import get_display_name, get_platform_context
+from backend.analysis.prompts import PLATFORM_CONTEXT_TEMPLATE, SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 from backend.analysis.schemas import (
     AnalysisResult,
     BenchmarkComparison,
@@ -36,7 +37,7 @@ from backend.benchmarks.cis import calculate_cis_compliance
 from backend.benchmarks.dora import DORA_LEVELS, classify_dora_level
 from backend.benchmarks.openssf import calculate_openssf_alignment
 from backend.benchmarks.slsa import SLSA_LEVELS, calculate_slsa_level
-from backend.models.enums import Category, CheckStatus, Severity
+from backend.models.enums import Category, CheckStatus, Platform, Severity
 from backend.scanners.base import CheckResult
 from backend.scanners.orchestrator import CategoryScore
 
@@ -90,6 +91,7 @@ class DevOpsAnalyzer:
         scan_results: list[CheckResult],
         category_scores: dict[Category, CategoryScore],
         overall_score: float,
+        platform: Platform = Platform.github,
     ) -> AnalysisResult:
         """Run the complete AI analysis pipeline and return structured results.
 
@@ -143,10 +145,20 @@ class DevOpsAnalyzer:
 
         json_schema: str = json.dumps(AnalysisResult.model_json_schema(), indent=2)
 
+        # Build platform-specific context block for the prompt.
+        ctx = get_platform_context(platform)
+        platform_context_block: str = PLATFORM_CONTEXT_TEMPLATE.format(
+            **ctx,
+            best_practices_list="\n".join(
+                f"- {bp}" for bp in ctx["best_practices_references"]
+            ),
+        )
+
         user_prompt: str = USER_PROMPT_TEMPLATE.format(
             org_name=org_name,
             total_repos=total_repos,
             overall_score=f"{overall_score:.2f}",
+            platform_context=platform_context_block,
             category_scores_table=self._format_category_scores(category_scores),
             failed_checks_summary=self._format_failed_checks(scan_results),
             passed_checks_summary=self._format_passed_checks(scan_results),
@@ -179,6 +191,7 @@ class DevOpsAnalyzer:
                 slsa_level=slsa_level,
                 cis=cis_compliance,
                 error_message=str(exc),
+                platform=platform,
             )
 
         # Step 6: Parse and validate.
@@ -199,6 +212,7 @@ class DevOpsAnalyzer:
                 slsa_level=slsa_level,
                 cis=cis_compliance,
                 error_message=str(exc),
+                platform=platform,
             )
 
         logger.info(
@@ -433,6 +447,7 @@ class DevOpsAnalyzer:
         slsa_level: int,
         cis: dict[str, dict[str, Any]],
         error_message: str = "",
+        platform: Platform = Platform.github,
     ) -> AnalysisResult:
         """Construct a basic :class:`AnalysisResult` when the AI step fails.
 
@@ -589,12 +604,15 @@ class DevOpsAnalyzer:
             else ""
         )
 
+        platform_name = get_display_name(platform)
+
         return AnalysisResult(
             executive_summary=(
-                f"{org_name} DevOps Assessment Summary\n\n"
-                f"The automated assessment of {org_name} produced an overall "
-                f"weighted score of {overall_score:.2f} out of 100, placing the "
-                f"organisation at the DORA {dora_level.upper()} performance level.\n\n"
+                f"{org_name} DevOps Assessment Summary ({platform_name})\n\n"
+                f"The automated {platform_name} assessment of {org_name} produced "
+                f"an overall weighted score of {overall_score:.2f} out of 100, "
+                f"placing the organisation at the DORA {dora_level.upper()} "
+                f"performance level.\n\n"
                 f"The organisation achieved an OpenSSF alignment of "
                 f"{openssf_passed_count}/{openssf_total} categories and SLSA Build "
                 f"Level {slsa_level}.  CIS compliance stands at "

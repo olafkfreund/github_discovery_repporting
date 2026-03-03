@@ -85,11 +85,21 @@
         <h2>B. Methodology</h2>
         <p>
             The DevOps Discovery assessment uses an automated, agent-based scanner
-            that collects configuration and activity data directly from the source
-            control platform via its public API.  No code is executed and no
+            that collects configuration and activity data directly from
+            {{ platform_display_name | default("the source control platform") }}
+            via its public API.  No code is executed and no
             repository contents are read; only metadata and configuration artefacts
             are inspected.
         </p>
+        {% if platform_context %}
+        <p>
+            Platform-specific features assessed include
+            {{ platform_context.ci_cd_name }} for CI/CD,
+            {{ platform_context.branch_protection_name }} for branch governance,
+            {{ platform_context.dependency_tool }} for dependency management, and
+            {{ platform_context.secret_scanning }} for secrets detection.
+        </p>
+        {% endif %}
         <p>
             Checks are grouped into five categories — <strong>Security</strong>,
             <strong>CI/CD</strong>, <strong>Code Quality</strong>,
@@ -164,6 +174,17 @@
                         DevOps-facing controls to the scan results.
                     </td>
                 </tr>
+                {% if platform_context %}
+                <tr>
+                    <td><strong>{{ platform_context.ci_cd_name }}</strong></td>
+                    <td>
+                        The CI/CD system native to {{ platform_display_name | default("the platform") }},
+                        used for automating build, test, and deployment pipelines.
+                        Pipeline configuration is defined in
+                        <code>{{ platform_context.terminology.pipeline_file }}</code>.
+                    </td>
+                </tr>
+                {% endif %}
                 <tr>
                     <td><strong>Branch Protection</strong></td>
                     <td>

@@ -19,11 +19,15 @@
         </div>
 
         <div>
-            <div class="cover-title">{{ report_title | default("GitHub DevOps Maturity Assessment") }}</div>
+            <div class="cover-title">{{ report_title | default("DevOps Maturity Assessment") }}</div>
             <div class="cover-subtitle">Confidential — Prepared for {{ customer_name }}</div>
         </div>
 
         <div class="cover-meta mt-md">
+            <div class="cover-meta-row">
+                <span class="cover-meta-label">Platform</span>
+                <span>{{ platform_display_name | default("GitHub") }}</span>
+            </div>
             <div class="cover-meta-row">
                 <span class="cover-meta-label">Organisation</span>
                 <span>{{ org_name }}</span>
