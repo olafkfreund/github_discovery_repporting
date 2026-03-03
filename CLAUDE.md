@@ -1,8 +1,10 @@
-# CLAUDE.md - DevOps Discovery & Reporting Platform
+# CLAUDE.md - BPS-tool (DevOps Discovery & Reporting Platform)
 
 ## Overview
 
 Multi-platform DevOps assessment tool that scans GitHub, GitLab, and Azure DevOps organizations, evaluates against industry best practices (OpenSSF, DORA, SLSA, CIS), uses Claude Opus 4.6 for analysis, and generates PDF reports.
+
+**Frontend:** BPS-tool v1.0.1
 
 ## Tech Stack
 
@@ -46,9 +48,21 @@ Platform abstraction with normalized models. Implements `PlatformProvider` and `
 16-domain scanner architecture with ~169 checks across org-level and repo-level scanners.
 
 **Base class pattern** (`base.py`):
-- `BaseScanner` provides shared `checks()`, cached `_check_map`, `_bool_check()`, and `_manual_review()` helpers
+- `BaseScanner` provides shared `checks()`, cached `_check_map`, `_bool_check()`, `_manual_review()`, and `_threshold()` helpers
+- `_threshold(check_id, key, default)` reads per-check threshold overrides from scan profile config, falling back to the hardcoded default
 - All scanners inherit from `BaseScanner` to eliminate boilerplate
 - `Scanner` protocol for repo-level, `OrgScanner` protocol for org-level
+
+**Scanner registry** (`registry.py`):
+- `get_scanner_registry()` auto-generates metadata from scanner code (never manually maintained)
+- `THRESHOLD_REGISTRY` maps 7 check IDs to tunable threshold key/default pairs (CICD-008, CICD-009, IAM-003, CQ-004, SDLC-003, SDLC-004, COLLAB-006)
+- Returns `CategoryInfo` dataclasses with checks, weights, scopes, and threshold defaults for the API and frontend profile editor
+
+**Orchestrator** (`orchestrator.py`):
+- `ScanOrchestrator(scan_config=...)` accepts optional scan profile config
+- Filters disabled categories/checks, overrides category weights, injects per-check threshold config
+- Renormalises weights so enabled categories sum to 1.0
+- `scan_org()` and `scan_repo()` filter out disabled check results
 
 **16 scanner domains** (weights sum to 1.0):
 
@@ -77,6 +91,28 @@ Platform abstraction with normalized models. Implements `PlatformProvider` and `
 - `backend/reports/` — WeasyPrint PDF generation from Jinja2 templates
 - `backend/benchmarks/` — OpenSSF, DORA, SLSA, CIS benchmark mappings
 
+### Scan Profiles (`backend/models/scan_profile.py`, `backend/routers/scan_profiles.py`)
+
+Per-customer scan profiles stored as JSON config, allowing users to:
+- Toggle categories and individual checks on/off
+- Override category weights
+- Tune per-check thresholds (e.g. CICD-008 pass_threshold, IAM-003 max_admin_ratio)
+
+Config is snapshotted into `Scan.scan_config` at scan trigger time for reproducibility. Profile schema uses sparse representation — absent categories/checks use defaults.
+
+**API endpoints:**
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/api/scanners/registry` | All categories + checks with threshold defaults |
+| GET | `/api/customers/{id}/scan-profiles` | List profiles for a customer |
+| POST | `/api/customers/{id}/scan-profiles` | Create profile |
+| GET | `/api/scan-profiles/{id}` | Get single profile |
+| PUT | `/api/scan-profiles/{id}` | Update profile |
+| DELETE | `/api/scan-profiles/{id}` | Delete profile |
+
+**Frontend:** Profile editor at `/customers/:id/scan-profiles` with category toggles, weight inputs, check toggles, threshold editors, and weight summary. Profile selector in scan trigger form on CustomerDetailPage.
+
 ### Scan Pipeline
 
 1. Provider fetches org-level assessment data
@@ -84,7 +120,7 @@ Platform abstraction with normalized models. Implements `PlatformProvider` and `
 3. Provider lists all repositories
 4. Per-repo: fetch assessment data, run 14 repo-level scanners
 5. Persist findings (org-level findings have `scan_repo_id=None`)
-6. Compute per-category scores
+6. Compute per-category scores (filtered by scan profile config if present)
 7. AI analysis generates summary and recommendations
 8. PDF report generated
 
@@ -95,6 +131,6 @@ Platform abstraction with normalized models. Implements `PlatformProvider` and `
 - Platform credentials encrypted with Fernet before DB storage (`CREDENTIALS_ENCRYPTION_KEY` in `.env`)
 - Async throughout (asyncpg, async SQLAlchemy sessions)
 - Pydantic schemas for all API request/response models
-- Scanner classes inherit from `BaseScanner` and use `_bool_check()`/`_manual_review()` helpers
+- Scanner classes inherit from `BaseScanner` and use `_bool_check()`/`_manual_review()`/`_threshold()` helpers
 - Check IDs use domain prefixes: PLAT-, IAM-, REPO-, CICD-, SEC-, DEP-, SAST-, DAST-, CNTR-, CQ-, SDLC-, COMP-, COLLAB-, DR-, MON-, MIG-
 - No authentication (internal network tool)
