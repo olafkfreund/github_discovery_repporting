@@ -16,8 +16,8 @@ def create_provider(connection: PlatformConnection) -> PlatformProvider:
     parsed as JSON.  The expected shape is platform-specific:
 
     * **GitHub** — ``{"token": "<pat>"}``
-    * **GitLab** — ``{"token": "<pat>"}``  *(not yet implemented)*
-    * **Azure DevOps** — ``{"token": "<pat>"}``  *(not yet implemented)*
+    * **GitLab** — ``{"token": "<pat>"}``
+    * **Azure DevOps** — ``{"token": "<pat>"}``
 
     Args:
         connection: A :class:`~backend.models.customer.PlatformConnection` ORM
@@ -71,9 +71,18 @@ def create_provider(connection: PlatformConnection) -> PlatformProvider:
         )
 
     if platform == Platform.azure_devops:
-        raise NotImplementedError(
-            "Azure DevOps provider is not yet implemented. "
-            "Currently supported platforms: GitHub, GitLab."
+        from backend.providers.azure_devops import AzureDevOpsProvider  # noqa: PLC0415
+
+        token = creds.get("token", "")
+        if not token:
+            raise ValueError(
+                f"Azure DevOps credentials for connection {connection.id} are missing "
+                "the required 'token' key."
+            )
+        return AzureDevOpsProvider(
+            token=token,
+            org_name=connection.org_or_group,
+            base_url=connection.base_url,
         )
 
     raise NotImplementedError(f"No provider implemented for platform: {platform!r}")

@@ -81,6 +81,7 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
         logger.error("run_scan: scan %s not found — aborting.", scan_id)
         return
 
+    provider = None  # Track for cleanup in finally block.
     try:
         # ------------------------------------------------------------------
         # Step 2: Transition to "scanning".
@@ -254,6 +255,12 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
             scan.error_message = msg or f"{type(exc).__name__}: {exc!r}"
 
     finally:
+        # Close provider to release HTTP connection pool resources (e.g. httpx).
+        if provider is not None and hasattr(provider, "close"):
+            try:
+                await provider.close()
+            except Exception:  # noqa: BLE001
+                logger.debug("Failed to close provider for scan %s", scan_id)
         await session.commit()
 
 

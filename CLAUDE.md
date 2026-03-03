@@ -39,6 +39,7 @@ Platform abstraction with normalized models. Implements `PlatformProvider` and `
 - `factory.py` — Provider instantiation from encrypted connection credentials
 - `github.py` — GitHub API via PyGithub (org + repo assessment data)
 - `gitlab.py` — GitLab API via python-gitlab (fuzzy group resolution, safe attribute access)
+- `azure_devops.py` — Azure DevOps REST API v7.0 via httpx (async, PAT Basic auth, project:repo external_id encoding, tree-based file detection)
 
 ### Scanner Engine (`backend/scanners/`)
 
