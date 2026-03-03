@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.models.customer import PlatformConnection
-from backend.models.enums import Category, CheckStatus, ScanStatus, Severity
+from backend.models.enums import Category, CheckStatus, Platform, ScanStatus, Severity
 from backend.models.finding import Finding, ScanScore
 from backend.models.scan import Scan
 from backend.schemas.finding import FindingResponse
@@ -102,6 +102,15 @@ async def trigger_scan(
             detail=(
                 f"Connection {payload.connection_id} not found "
                 f"for customer {customer_id}."
+            ),
+        )
+
+    if connection.platform == Platform.azure_devops:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Azure DevOps provider is not yet implemented. "
+                "Currently supported platforms: GitHub, GitLab."
             ),
         )
 

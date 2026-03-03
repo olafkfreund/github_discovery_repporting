@@ -227,7 +227,9 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
         # Produce a user-friendly error for common failures.
         msg = str(exc)
         exc_type = type(exc).__name__
-        if exc_type == "InvalidToken" or "InvalidToken" in msg:
+        if isinstance(exc, NotImplementedError):
+            scan.error_message = msg or "This platform is not yet supported."
+        elif exc_type == "InvalidToken" or "InvalidToken" in msg:
             scan.error_message = (
                 "Stored credentials could not be decrypted — the encryption key "
                 "may have changed. Please edit this connection and re-enter your "

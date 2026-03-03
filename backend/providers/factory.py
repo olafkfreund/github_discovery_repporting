@@ -71,12 +71,9 @@ def create_provider(connection: PlatformConnection) -> PlatformProvider:
         )
 
     if platform == Platform.azure_devops:
-        from backend.providers.azure_devops import AzureDevOpsProvider  # noqa: PLC0415
-
-        return AzureDevOpsProvider(
-            token=creds.get("token", ""),
-            org_name=connection.org_or_group,
-            base_url=connection.base_url,
+        raise NotImplementedError(
+            "Azure DevOps provider is not yet implemented. "
+            "Currently supported platforms: GitHub, GitLab."
         )
 
     raise NotImplementedError(f"No provider implemented for platform: {platform!r}")
