@@ -143,6 +143,9 @@ _MAX_PROJECTS = 500
 # Guard: maximum tree items to process in file flag detection.
 _MAX_TREE_ITEMS = 50_000
 
+# Maximum YAML content size (bytes) to parse — defence against YAML bombs.
+_MAX_YAML_SIZE = 1_000_000  # 1 MB
+
 # Validation: Azure DevOps org names may contain alphanumerics, hyphens, and
 # underscores (1-50 chars).
 _SAFE_ORG_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
@@ -359,6 +362,9 @@ class AzureDevOpsProvider:
                 project_visibility = project.get("visibility", "private")
                 project_path = quote(project_name, safe="")
                 try:
+                    # The repos-per-project endpoint returns all repos in one
+                    # call (no pagination needed — Azure DevOps caps at ~1000
+                    # repos per project which fits in a single response).
                     repo_data = await self._get(
                         f"{self._base_url}/{project_path}/_apis/git/repositories",
                     )
@@ -687,7 +693,7 @@ class AzureDevOpsProvider:
 
             # Determine trigger events from the YAML
             trigger_events: list[str] = []
-            if yaml_content:
+            if yaml_content and len(yaml_content) <= _MAX_YAML_SIZE:
                 try:
                     parsed = yaml.safe_load(yaml_content)
                     if isinstance(parsed, dict):
@@ -781,23 +787,23 @@ class AzureDevOpsProvider:
             pass
 
         # Check pipeline YAML for security tasks
-        try:
-            for yaml_path in ("azure-pipelines.yml", ".azure-pipelines.yml"):
-                try:
-                    item_data = await self._get(
-                        f"{self._base_url}/{project}/_apis/git/repositories/{repo_id}/items",
-                        params={"path": yaml_path, "includeContent": "true"},
-                    )
-                    content = (item_data.get("content") or "").lower()
+        for yaml_path in ("azure-pipelines.yml", ".azure-pipelines.yml"):
+            try:
+                item_data = await self._get(
+                    f"{self._base_url}/{project}/_apis/git/repositories/{repo_id}/items",
+                    params={"path": yaml_path, "includeContent": "true"},
+                )
+                content = (item_data.get("content") or "").lower()
+                if len(content) <= _MAX_YAML_SIZE:
                     if any(kw in content for kw in ("credscan", "secret", "gitleaks")):
                         secret_scanning = True
                     if any(kw in content for kw in ("codeql", "sast", "semgrep", "bandit")):
                         code_scanning = True
-                    break
-                except httpx.HTTPStatusError:
-                    continue
-        except Exception:  # noqa: BLE001
-            pass
+                break
+            except httpx.HTTPStatusError:
+                continue
+            except Exception:  # noqa: BLE001
+                break
 
         # Check for dependency scanning / renovate config
         for dep_path in (".github/dependabot.yml", "renovate.json", ".renovaterc.json"):

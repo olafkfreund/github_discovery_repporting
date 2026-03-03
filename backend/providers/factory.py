@@ -64,8 +64,14 @@ def create_provider(connection: PlatformConnection) -> PlatformProvider:
     if platform == Platform.gitlab:
         from backend.providers.gitlab import GitLabProvider  # noqa: PLC0415
 
+        token = creds.get("token", "")
+        if not token:
+            raise ValueError(
+                f"GitLab credentials for connection {connection.id} are missing "
+                "the required 'token' key."
+            )
         return GitLabProvider(
-            token=creds.get("token", ""),
+            token=token,
             group=connection.org_or_group,
             base_url=connection.base_url,
         )

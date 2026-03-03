@@ -33,6 +33,120 @@ _SECURITY_KEYWORDS = frozenset(
 )
 _DEPLOY_KEYWORDS = frozenset({"deploy", "release", "publish", "ship", "cd"})
 
+# Candidate file paths keyed by flag name.  Used by _fetch_file_flags to
+# detect repository conventions via the GitHub Contents API.  Shared as a
+# module constant so the dict is built once rather than on every call.
+_CANDIDATE_PATHS: dict[str, list[str]] = {
+    "has_codeowners": ["CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"],
+    "has_pr_template": [
+        ".github/pull_request_template.md",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        "pull_request_template.md",
+    ],
+    "has_contributing_guide": [
+        "CONTRIBUTING.md",
+        ".github/CONTRIBUTING.md",
+        "docs/CONTRIBUTING.md",
+    ],
+    "has_license": ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md"],
+    "has_readme": ["README.md", "README.rst", "README.txt", "README"],
+    "has_sbom": ["sbom.json", "sbom.spdx", "sbom.cyclonedx.json", "bom.json", "bom.xml"],
+    # Container
+    "has_dockerfile": ["Dockerfile", "dockerfile", "docker/Dockerfile"],
+    "has_docker_compose": [
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yml",
+        "compose.yaml",
+    ],
+    "has_container_scanning": [
+        ".github/workflows/container-scan.yml",
+        ".trivy.yaml",
+        ".grype.yaml",
+    ],
+    # IaC
+    "has_iac_files": [
+        "main.tf",
+        "terraform/main.tf",
+        "Pulumi.yaml",
+        "pulumi/Pulumi.yaml",
+        "infrastructure/main.tf",
+    ],
+    # Monitoring / Observability
+    "has_monitoring_config": [
+        "prometheus.yml",
+        "monitoring/prometheus.yml",
+        "datadog.yaml",
+        ".datadog-ci.json",
+        "grafana/dashboards",
+    ],
+    "has_backup_config": ["backup.yml", "backup.yaml", "docs/backup-strategy.md"],
+    # Documentation
+    "has_changelog": ["CHANGELOG.md", "CHANGES.md", "HISTORY.md"],
+    "has_adr_directory": ["docs/adr", "adr", "docs/architecture/decisions"],
+    # Security tooling
+    "has_sast_config": [
+        ".semgrep.yml",
+        ".semgrep.yaml",
+        ".semgrep",
+        ".codeql",
+        ".github/codeql",
+    ],
+    "has_dast_config": [".zap/rules.tsv", "dast-config.yml", ".dast.yml"],
+    # API / process docs
+    "has_api_docs": [
+        "openapi.yaml",
+        "openapi.json",
+        "swagger.yaml",
+        "swagger.json",
+        "docs/api",
+    ],
+    "has_runbook": ["runbook.md", "docs/runbook.md", "RUNBOOK.md"],
+    "has_sla_document": ["SLA.md", "docs/SLA.md", "docs/sla.md"],
+    "has_migration_guide": ["MIGRATION.md", "docs/migration.md", "docs/MIGRATION.md"],
+    "has_deprecation_policy": ["DEPRECATION.md", "docs/deprecation.md", "docs/DEPRECATION.md"],
+    # Issue / collaboration
+    "has_issue_templates": [".github/ISSUE_TEMPLATE", ".github/ISSUE_TEMPLATE.md"],
+    # SDLC / process
+    "has_branching_strategy_doc": [
+        "docs/branching-strategy.md",
+        "docs/git-workflow.md",
+        "BRANCHING.md",
+    ],
+    "has_release_process_doc": ["docs/release-process.md", "RELEASING.md", "docs/RELEASING.md"],
+    "has_hotfix_process_doc": ["docs/hotfix-process.md", "docs/HOTFIX.md"],
+    "has_definition_of_done": ["docs/definition-of-done.md", "docs/DOD.md"],
+    "has_feature_flags": [
+        ".featureflags.yml",
+        "feature-flags.json",
+        "flagsmith.json",
+        "launchdarkly.yml",
+    ],
+    # Code quality
+    "has_editorconfig": [".editorconfig", ".prettierrc", ".prettierrc.json", ".prettierrc.yml"],
+    "has_type_checking": [
+        "mypy.ini",
+        ".mypy.ini",
+        "pyproject.toml",
+        "tsconfig.json",
+        "pyrightconfig.json",
+    ],
+    # DR / incident
+    "has_dr_runbook": ["docs/disaster-recovery.md", "docs/DR.md", "DR-RUNBOOK.md"],
+    "has_incident_response_playbook": [
+        "docs/incident-response.md",
+        "docs/INCIDENT.md",
+        "INCIDENT-RESPONSE.md",
+        "playbooks/incident.md",
+    ],
+    "has_on_call_doc": ["docs/on-call.md", "docs/oncall.md", "ON-CALL.md"],
+    "has_dashboards_as_code": [
+        "grafana/dashboards",
+        "dashboards/",
+        "monitoring/dashboards",
+    ],
+}
+
 
 class GitHubProvider:
     """GitHub implementation of the :class:`~backend.providers.base.PlatformProvider` protocol.
@@ -543,118 +657,7 @@ def _fetch_file_flags(repo: GithubRepo) -> dict[str, bool]:
         "has_dashboards_as_code": False,
     }
 
-    candidate_paths: dict[str, list[str]] = {
-        "has_codeowners": ["CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"],
-        "has_pr_template": [
-            ".github/pull_request_template.md",
-            ".github/PULL_REQUEST_TEMPLATE.md",
-            "pull_request_template.md",
-        ],
-        "has_contributing_guide": [
-            "CONTRIBUTING.md",
-            ".github/CONTRIBUTING.md",
-            "docs/CONTRIBUTING.md",
-        ],
-        "has_license": ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md"],
-        "has_readme": ["README.md", "README.rst", "README.txt", "README"],
-        "has_sbom": ["sbom.json", "sbom.spdx", "sbom.cyclonedx.json", "bom.json", "bom.xml"],
-        # Container
-        "has_dockerfile": ["Dockerfile", "dockerfile", "docker/Dockerfile"],
-        "has_docker_compose": [
-            "docker-compose.yml",
-            "docker-compose.yaml",
-            "compose.yml",
-            "compose.yaml",
-        ],
-        "has_container_scanning": [
-            ".github/workflows/container-scan.yml",
-            ".trivy.yaml",
-            ".grype.yaml",
-        ],
-        # IaC
-        "has_iac_files": [
-            "main.tf",
-            "terraform/main.tf",
-            "Pulumi.yaml",
-            "pulumi/Pulumi.yaml",
-            "infrastructure/main.tf",
-        ],
-        # Monitoring / Observability
-        "has_monitoring_config": [
-            "prometheus.yml",
-            "monitoring/prometheus.yml",
-            "datadog.yaml",
-            ".datadog-ci.json",
-            "grafana/dashboards",
-        ],
-        "has_backup_config": ["backup.yml", "backup.yaml", "docs/backup-strategy.md"],
-        # Documentation
-        "has_changelog": ["CHANGELOG.md", "CHANGES.md", "HISTORY.md"],
-        "has_adr_directory": ["docs/adr", "adr", "docs/architecture/decisions"],
-        # Security tooling
-        "has_sast_config": [
-            ".semgrep.yml",
-            ".semgrep.yaml",
-            ".semgrep",
-            ".codeql",
-            ".github/codeql",
-        ],
-        "has_dast_config": [".zap/rules.tsv", "dast-config.yml", ".dast.yml"],
-        # API / process docs
-        "has_api_docs": [
-            "openapi.yaml",
-            "openapi.json",
-            "swagger.yaml",
-            "swagger.json",
-            "docs/api",
-        ],
-        "has_runbook": ["runbook.md", "docs/runbook.md", "RUNBOOK.md"],
-        "has_sla_document": ["SLA.md", "docs/SLA.md", "docs/sla.md"],
-        "has_migration_guide": ["MIGRATION.md", "docs/migration.md", "docs/MIGRATION.md"],
-        "has_deprecation_policy": ["DEPRECATION.md", "docs/deprecation.md", "docs/DEPRECATION.md"],
-        # Issue / collaboration
-        "has_issue_templates": [".github/ISSUE_TEMPLATE", ".github/ISSUE_TEMPLATE.md"],
-        # SDLC / process
-        "has_branching_strategy_doc": [
-            "docs/branching-strategy.md",
-            "docs/git-workflow.md",
-            "BRANCHING.md",
-        ],
-        "has_release_process_doc": ["docs/release-process.md", "RELEASING.md", "docs/RELEASING.md"],
-        "has_hotfix_process_doc": ["docs/hotfix-process.md", "docs/HOTFIX.md"],
-        "has_definition_of_done": ["docs/definition-of-done.md", "docs/DOD.md"],
-        "has_feature_flags": [
-            ".featureflags.yml",
-            "feature-flags.json",
-            "flagsmith.json",
-            "launchdarkly.yml",
-        ],
-        # Code quality
-        "has_editorconfig": [".editorconfig", ".prettierrc", ".prettierrc.json", ".prettierrc.yml"],
-        "has_type_checking": [
-            "mypy.ini",
-            ".mypy.ini",
-            "pyproject.toml",
-            "tsconfig.json",
-            "pyrightconfig.json",
-        ],
-        # DR / incident
-        "has_dr_runbook": ["docs/disaster-recovery.md", "docs/DR.md", "DR-RUNBOOK.md"],
-        "has_incident_response_playbook": [
-            "docs/incident-response.md",
-            "docs/INCIDENT.md",
-            "INCIDENT-RESPONSE.md",
-            "playbooks/incident.md",
-        ],
-        "has_on_call_doc": ["docs/on-call.md", "docs/oncall.md", "ON-CALL.md"],
-        "has_dashboards_as_code": [
-            "grafana/dashboards",
-            "dashboards/",
-            "monitoring/dashboards",
-        ],
-    }
-
-    for flag, paths in candidate_paths.items():
+    for flag, paths in _CANDIDATE_PATHS.items():
         for path in paths:
             try:
                 repo.get_contents(path)
