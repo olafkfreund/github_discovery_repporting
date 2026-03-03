@@ -134,6 +134,12 @@ def test_parse_external_id_with_colons_in_project() -> None:
     assert repo_id == "Project:abc-123"
 
 
+def test_parse_external_id_raises_on_malformed_input() -> None:
+    """_parse_external_id raises ValueError when no colon separator exists."""
+    with pytest.raises(ValueError, match="Malformed external_id"):
+        AzureDevOpsProvider._parse_external_id("no-colon-here")
+
+
 # ---------------------------------------------------------------------------
 # validate_connection tests
 # ---------------------------------------------------------------------------
@@ -265,6 +271,42 @@ async def test_list_repos_strips_refs_heads(provider: AzureDevOpsProvider) -> No
     assert repos[0].default_branch == "release/v2"
 
 
+@pytest.mark.asyncio
+async def test_list_repos_respects_project_visibility(provider: AzureDevOpsProvider) -> None:
+    """list_repos sets is_private based on project visibility."""
+    projects_resp = _mock_response({
+        "value": [
+            {"name": "PublicProject", "visibility": "public"},
+            {"name": "PrivateProject", "visibility": "private"},
+        ],
+    })
+    repos_resp = _mock_response({
+        "value": [
+            {
+                "id": "r1",
+                "name": "repo1",
+                "defaultBranch": "refs/heads/main",
+                "webUrl": "https://dev.azure.com/test-org/X/_git/repo1",
+                "project": {},
+            },
+        ],
+    })
+
+    async def mock_get(url: str, **kwargs: object) -> httpx.Response:
+        if "/_apis/projects" in str(url):
+            return projects_resp
+        return repos_resp
+
+    with patch.object(provider._client, "get", side_effect=mock_get):
+        repos = await provider.list_repos()
+
+    assert len(repos) == 2
+    public_repo = next(r for r in repos if r.external_id.startswith("PublicProject:"))
+    private_repo = next(r for r in repos if r.external_id.startswith("PrivateProject:"))
+    assert public_repo.is_private is False
+    assert private_repo.is_private is True
+
+
 # ---------------------------------------------------------------------------
 # Branch protection tests
 # ---------------------------------------------------------------------------
@@ -359,6 +401,80 @@ async def test_ci_workflows_from_definitions(provider: AzureDevOpsProvider) -> N
     assert "main" in wf.trigger_events
 
 
+@pytest.mark.asyncio
+async def test_ci_workflows_trigger_none(provider: AzureDevOpsProvider) -> None:
+    """_fetch_ci_workflows treats `trigger: none` as ["none"], not ["push"]."""
+    definitions_resp = _mock_response({
+        "value": [
+            {
+                "id": 20,
+                "name": "Manual Only",
+                "process": {"yamlFilename": "manual.yml"},
+            },
+        ],
+    })
+    yaml_content = "trigger: none\nsteps:\n  - script: echo hello"
+    yaml_resp = _mock_response({"content": yaml_content})
+    builds_resp = _mock_response({"value": []})
+
+    async def mock_get(url: str, **kwargs: object) -> httpx.Response:
+        url_str = str(url)
+        if "build/definitions" in url_str:
+            return definitions_resp
+        if "/items" in url_str:
+            return yaml_resp
+        if "build/builds" in url_str:
+            return builds_resp
+        return _mock_response({"value": []})
+
+    with patch.object(provider._client, "get", side_effect=mock_get):
+        workflows = await provider._fetch_ci_workflows("Proj", "repo-1")
+
+    assert len(workflows) == 1
+    assert workflows[0].trigger_events == ["none"]
+
+
+@pytest.mark.asyncio
+async def test_ci_workflows_base64_content(provider: AzureDevOpsProvider) -> None:
+    """_fetch_ci_workflows decodes base64-encoded YAML content."""
+    import base64 as b64
+
+    definitions_resp = _mock_response({
+        "value": [
+            {
+                "id": 30,
+                "name": "Encoded Pipeline",
+                "process": {"yamlFilename": "ci.yml"},
+            },
+        ],
+    })
+    raw_yaml = "trigger:\n  - main\nsteps:\n  - script: ruff check"
+    encoded = b64.b64encode(raw_yaml.encode()).decode()
+    yaml_resp = _mock_response({
+        "content": encoded,
+        "contentMetadata": {"encoding": "base64"},
+    })
+    builds_resp = _mock_response({"value": []})
+
+    async def mock_get(url: str, **kwargs: object) -> httpx.Response:
+        url_str = str(url)
+        if "build/definitions" in url_str:
+            return definitions_resp
+        if "/items" in url_str:
+            return yaml_resp
+        if "build/builds" in url_str:
+            return builds_resp
+        return _mock_response({"value": []})
+
+    with patch.object(provider._client, "get", side_effect=mock_get):
+        workflows = await provider._fetch_ci_workflows("Proj", "repo-1")
+
+    assert len(workflows) == 1
+    wf = workflows[0]
+    assert wf.has_lint is True  # "ruff" is in _LINT_KEYWORDS
+    assert "main" in wf.trigger_events
+
+
 # ---------------------------------------------------------------------------
 # File flags tests
 # ---------------------------------------------------------------------------
@@ -377,8 +493,18 @@ async def test_file_flags_tree_based(provider: AzureDevOpsProvider) -> None:
             {"path": "/mypy.ini"},
         ],
     })
+    wiki_resp = _mock_response({"value": [{"name": "ProjectWiki"}]})
+    boards_resp = _mock_response({"value": [{"name": "Stories"}]})
 
-    with patch.object(provider._client, "get", AsyncMock(return_value=tree_resp)):
+    async def mock_get(url: str, **kwargs: object) -> httpx.Response:
+        url_str = str(url)
+        if "/wiki/wikis" in url_str:
+            return wiki_resp
+        if "/work/boards" in url_str:
+            return boards_resp
+        return tree_resp
+
+    with patch.object(provider._client, "get", side_effect=mock_get):
         flags = await provider._fetch_file_flags("Proj", "repo-1")
 
     assert flags["has_readme"] is True
@@ -387,9 +513,33 @@ async def test_file_flags_tree_based(provider: AzureDevOpsProvider) -> None:
     assert flags["has_adr_directory"] is True
     assert flags["has_editorconfig"] is True
     assert flags["has_type_checking"] is True
+    assert flags["has_wiki"] is True
+    assert flags["has_project_boards"] is True
     # Absent files should be False
     assert flags["has_sbom"] is False
     assert flags["has_docker_compose"] is False
+
+
+@pytest.mark.asyncio
+async def test_file_flags_no_wiki_no_boards(provider: AzureDevOpsProvider) -> None:
+    """_fetch_file_flags sets wiki/boards to False when APIs return empty/error."""
+    tree_resp = _mock_response({"value": [{"path": "/README.md"}]})
+    empty_resp = _mock_response({"value": []})
+
+    async def mock_get(url: str, **kwargs: object) -> httpx.Response:
+        url_str = str(url)
+        if "/wiki/wikis" in url_str:
+            return empty_resp
+        if "/work/boards" in url_str:
+            return _mock_error_response(404)
+        return tree_resp
+
+    with patch.object(provider._client, "get", side_effect=mock_get):
+        flags = await provider._fetch_file_flags("Proj", "repo-1")
+
+    assert flags["has_readme"] is True
+    assert flags["has_wiki"] is False
+    assert flags["has_project_boards"] is False
 
 
 # ---------------------------------------------------------------------------

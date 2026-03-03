@@ -137,6 +137,12 @@ _CANDIDATE_PATHS: dict[str, list[str]] = {
 # Default page size for paginated Azure DevOps API calls.
 _PAGE_SIZE = 100
 
+# Circuit breaker: maximum projects to enumerate before stopping pagination.
+_MAX_PROJECTS = 500
+
+# Guard: maximum tree items to process in file flag detection.
+_MAX_TREE_ITEMS = 50_000
+
 # Validation: Azure DevOps org names may contain alphanumerics, hyphens, and
 # underscores (1-50 chars).
 _SAFE_ORG_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
@@ -267,8 +273,16 @@ class AzureDevOpsProvider:
 
     @staticmethod
     def _parse_external_id(external_id: str) -> tuple[str, str]:
-        """Parse ``"project_name:repo_guid"`` back into its components."""
-        project, _, repo_id = external_id.partition(":")
+        """Parse ``"project_name:repo_guid"`` back into its components.
+
+        Raises:
+            ValueError: If *external_id* does not contain a ``":"`` separator.
+        """
+        project, sep, repo_id = external_id.partition(":")
+        if not sep:
+            raise ValueError(
+                f"Malformed external_id {external_id!r} — expected 'project:repo_guid' format."
+            )
         return project, repo_id
 
     @staticmethod
@@ -300,11 +314,11 @@ class AzureDevOpsProvider:
                 exc.response.status_code,
             )
             return False
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.error(
-                "Unexpected error validating Azure DevOps connection for org=%r: %s",
+                "Unexpected error validating Azure DevOps connection for org=%r",
                 self._org_name,
-                exc,
+                exc_info=True,
             )
             return False
 
@@ -321,16 +335,19 @@ class AzureDevOpsProvider:
         """
         repos: list[NormalizedRepo] = []
 
-        # Paginate projects
+        # Paginate projects with circuit breaker
         skip = 0
+        total_projects_seen = 0
         while True:
             try:
                 data = await self._get(
                     f"{self._base_url}/_apis/projects",
                     params={"$top": str(_PAGE_SIZE), "$skip": str(skip)},
                 )
-            except Exception as exc:  # noqa: BLE001
-                logger.error("Failed to list projects for org=%r: %s", self._org_name, exc)
+            except Exception:  # noqa: BLE001
+                logger.error(
+                    "Failed to list projects for org=%r", self._org_name, exc_info=True
+                )
                 break
 
             projects: list[dict[str, Any]] = data.get("value", [])
@@ -339,16 +356,17 @@ class AzureDevOpsProvider:
 
             for project in projects:
                 project_name: str = project["name"]
+                project_visibility = project.get("visibility", "private")
                 project_path = quote(project_name, safe="")
                 try:
                     repo_data = await self._get(
                         f"{self._base_url}/{project_path}/_apis/git/repositories",
                     )
-                except Exception as exc:  # noqa: BLE001
+                except Exception:  # noqa: BLE001
                     logger.warning(
-                        "Failed to list repos for project=%r: %s",
+                        "Failed to list repos for project=%r",
                         project_name,
-                        exc,
+                        exc_info=True,
                     )
                     continue
 
@@ -364,7 +382,7 @@ class AzureDevOpsProvider:
                             name=r["name"],
                             url=r.get("webUrl", r.get("remoteUrl", "")),
                             default_branch=default_branch,
-                            is_private=True,  # Azure DevOps repos are org-scoped
+                            is_private=project_visibility != "public",
                             description=r.get("project", {}).get("description"),
                             language=None,
                             created_at=None,
@@ -373,6 +391,14 @@ class AzureDevOpsProvider:
                         )
                     )
 
+            total_projects_seen += len(projects)
+            if total_projects_seen >= _MAX_PROJECTS:
+                logger.warning(
+                    "Reached project limit (%d) for org=%r — stopping enumeration.",
+                    _MAX_PROJECTS,
+                    self._org_name,
+                )
+                break
             if len(projects) < _PAGE_SIZE:
                 break
             skip += _PAGE_SIZE
@@ -430,8 +456,8 @@ class AzureDevOpsProvider:
                 if not continuation:
                     break
             members.total_members = total_users
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Could not fetch user count for %s: %s", self._org_name, exc)
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not fetch user count for %s", self._org_name, exc_info=True)
 
         # Admin count — enumerate members of admin groups (not just group count).
         try:
@@ -472,8 +498,8 @@ class AzureDevOpsProvider:
                 if not continuation:
                     break
             members.admin_count = len(admin_descriptors)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Could not fetch group info for %s: %s", self._org_name, exc)
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not fetch group info for %s", self._org_name, exc_info=True)
 
         # MFA/SSO — managed at Azure AD/Entra ID level, not available via
         # the Azure DevOps REST API.  Keeping False here; the scanner layer
@@ -511,11 +537,11 @@ class AzureDevOpsProvider:
                         break
                 except Exception:  # noqa: BLE001
                     continue
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.debug(
-                "Could not check org security policy for %s: %s",
+                "Could not check org security policy for %s",
                 self._org_name,
-                exc,
+                exc_info=True,
             )
 
         return OrgAssessmentData(
@@ -550,12 +576,12 @@ class AzureDevOpsProvider:
                     "refName": f"refs/heads/{default_branch}",
                 },
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.debug(
-                "Could not fetch branch policies for %s/%s: %s",
+                "Could not fetch branch policies for %s/%s",
                 project,
                 default_branch,
-                exc,
+                exc_info=True,
             )
             return None
 
@@ -616,12 +642,12 @@ class AzureDevOpsProvider:
                 f"{self._base_url}/{project}/_apis/build/definitions",
                 params={"repositoryId": repo_id, "repositoryType": "TfsGit"},
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.debug(
-                "Could not fetch build definitions for %s/%s: %s",
+                "Could not fetch build definitions for %s/%s",
                 project,
                 repo_id,
-                exc,
+                exc_info=True,
             )
             return workflows
 
@@ -639,6 +665,15 @@ class AzureDevOpsProvider:
                         params={"path": yaml_path, "includeContent": "true"},
                     )
                     yaml_content = item_data.get("content", "")
+                    # Azure DevOps may return base64-encoded content
+                    encoding = (
+                        item_data.get("contentMetadata", {}).get("encoding", "")
+                    )
+                    if encoding and "base64" in encoding.lower():
+                        try:
+                            yaml_content = base64.b64decode(yaml_content).decode()
+                        except Exception:  # noqa: BLE001
+                            yaml_content = ""
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -657,7 +692,10 @@ class AzureDevOpsProvider:
                     parsed = yaml.safe_load(yaml_content)
                     if isinstance(parsed, dict):
                         trigger = parsed.get("trigger")
-                        if isinstance(trigger, list):
+                        if trigger is None:
+                            # `trigger: none` in YAML → explicitly disabled
+                            trigger_events = ["none"]
+                        elif isinstance(trigger, list):
                             trigger_events = [str(t) for t in trigger]
                         elif isinstance(trigger, dict):
                             branches = trigger.get("branches", {})
@@ -842,16 +880,27 @@ class AzureDevOpsProvider:
                     "includeContentMetadata": "false",
                 },
             )
-            for item in data.get("value", []):
+            items = data.get("value", [])
+            if len(items) > _MAX_TREE_ITEMS:
+                logger.warning(
+                    "Repo tree for %s/%s has %d items (limit %d) — "
+                    "file flag detection may be incomplete.",
+                    project,
+                    repo_id,
+                    len(items),
+                    _MAX_TREE_ITEMS,
+                )
+                items = items[:_MAX_TREE_ITEMS]
+            for item in items:
                 path = item.get("path", "")
                 # Normalise: strip leading "/" for matching
                 tree_paths.add(path.lstrip("/"))
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.debug(
-                "Could not fetch repo tree for %s/%s: %s",
+                "Could not fetch repo tree for %s/%s",
                 project,
                 repo_id,
-                exc,
+                exc_info=True,
             )
             return flags
 
@@ -865,6 +914,25 @@ class AzureDevOpsProvider:
                     flags[flag] = True
                     break
 
+        # Wiki — project-level feature in Azure DevOps
+        try:
+            wiki_data = await self._get(
+                f"{self._base_url}/{project}/_apis/wiki/wikis",
+            )
+            if wiki_data.get("value"):
+                flags["has_wiki"] = True
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Project boards (Azure Boards / work items)
+        try:
+            await self._get(
+                f"{self._base_url}/{project}/_apis/work/boards",
+            )
+            flags["has_project_boards"] = True
+        except Exception:  # noqa: BLE001
+            pass
+
         return flags
 
     async def _fetch_recent_prs(
@@ -873,7 +941,14 @@ class AzureDevOpsProvider:
         repo_id: str,
         count: int = 30,
     ) -> list[PullRequestInfo]:
-        """Retrieve recent completed pull requests."""
+        """Retrieve recent completed pull requests.
+
+        Note: ``additions`` and ``deletions`` are always ``0`` because the
+        Azure DevOps PR list endpoint does not include line-change counts.
+        Fetching per-PR iteration stats would re-introduce N+1 queries.
+        Scanners that rely on PR size (e.g. SDLC-004) should treat ``0``
+        as "data unavailable" for this platform.
+        """
         prs: list[PullRequestInfo] = []
 
         try:
@@ -884,12 +959,12 @@ class AzureDevOpsProvider:
                     "$top": str(count),
                 },
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.debug(
-                "Could not fetch PRs for %s/%s: %s",
+                "Could not fetch PRs for %s/%s",
                 project,
                 repo_id,
-                exc,
+                exc_info=True,
             )
             return prs
 
