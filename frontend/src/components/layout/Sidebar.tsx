@@ -100,8 +100,8 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="px-6 py-4 border-t border-gray-700">
-        <p className="text-xs text-gray-500">Internal Tool</p>
-        <p className="text-xs text-gray-600">v0.1.0</p>
+        <p className="text-xs text-gray-500">BPS-tool</p>
+        <p className="text-xs text-gray-600">v1.0.1</p>
       </div>
     </aside>
   )
