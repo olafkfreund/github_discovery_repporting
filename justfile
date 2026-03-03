@@ -5,8 +5,12 @@ default:
 
 # --- Backend ---
 
-# Run the backend dev server
+# Run the backend dev server (requires nix develop for WeasyPrint libs)
 dev:
+    @if [ -z "$$IN_NIX_SHELL" ] && [ -z "$$NIX_BUILD_TOP" ]; then \
+        echo "WARNING: Not inside 'nix develop'. WeasyPrint PDF generation will fail."; \
+        echo "Run 'nix develop' first, then 'just dev'."; \
+    fi
     uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 # Run tests

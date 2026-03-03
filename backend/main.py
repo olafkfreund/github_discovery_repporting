@@ -32,12 +32,32 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(dashboard_router, prefix="/api")
 
 
+def _check_weasyprint() -> None:
+    """Verify that WeasyPrint's native dependencies are available.
+
+    Called at startup so missing libraries surface immediately in the logs
+    rather than silently failing inside a background report-generation task.
+    """
+    try:
+        import weasyprint  # noqa: F401
+
+        logger.info("WeasyPrint available — PDF generation ready.")
+    except OSError as exc:
+        logger.error(
+            "WeasyPrint native libraries NOT available — PDF generation "
+            "will fail. Start the server inside 'nix develop' to set "
+            "LD_LIBRARY_PATH. Error: %s",
+            exc,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     """Application lifespan handler: set up resources on startup."""
     reports_dir = Path(settings.REPORTS_DIR)
     reports_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Reports directory ensured at %s", reports_dir.resolve())
+    _check_weasyprint()
     yield
     # Teardown logic (if needed) goes here.
 

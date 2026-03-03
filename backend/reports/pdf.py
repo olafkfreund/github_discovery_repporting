@@ -153,6 +153,9 @@ class PDFRenderer:
             The resolved *output_path* after the file has been written.
 
         Raises:
+            RuntimeError: When WeasyPrint's native libraries (pango, cairo,
+                etc.) are not available — typically means the server was not
+                started inside ``nix develop``.
             OSError: When the parent directory does not exist or is not
                 writable.
         """
@@ -167,7 +170,15 @@ class PDFRenderer:
         # added.
         base_url = self._styles_dir.resolve().as_uri() + "/"
 
-        import weasyprint  # lazy import: requires pango/cairo system libs
+        try:
+            import weasyprint  # lazy import: requires pango/cairo system libs
+        except OSError as exc:
+            msg = (
+                f"WeasyPrint native libraries unavailable: {exc}. "
+                "Start the server inside 'nix develop' to set LD_LIBRARY_PATH."
+            )
+            logger.error(msg)
+            raise RuntimeError(msg) from exc
 
         doc = weasyprint.HTML(string=html, base_url=base_url)
         doc.write_pdf(str(output_path))

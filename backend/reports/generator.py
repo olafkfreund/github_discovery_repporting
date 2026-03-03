@@ -22,6 +22,7 @@ Typical usage::
     )
 """
 
+import asyncio
 import logging
 import re
 from datetime import UTC, datetime
@@ -216,8 +217,11 @@ class ReportGenerator:
             scan_id=scan_id,
         )
 
-        # Write PDF.
-        result_path = self._renderer.generate_pdf(html, output_path)
+        # Write PDF in a thread to avoid blocking the async event loop
+        # (WeasyPrint's rendering is synchronous and can take several seconds).
+        result_path = await asyncio.to_thread(
+            self._renderer.generate_pdf, html, output_path
+        )
 
         logger.info("Report generated successfully: %s", result_path)
         return result_path
