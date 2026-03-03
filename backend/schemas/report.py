@@ -42,6 +42,8 @@ class ReportResponse(BaseModel):
     overall_score: float | None
     dora_level: str | None
     pdf_path: str | None
+    excel_path: str | None = None
+    zip_path: str | None = None
     status: ReportStatus
     created_at: datetime
     updated_at: datetime

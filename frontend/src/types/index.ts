@@ -121,6 +121,8 @@ export interface Report {
   overall_score: number | null
   dora_level: string | null
   pdf_path: string | null
+  excel_path: string | null
+  zip_path: string | null
   status: 'pending' | 'generating' | 'completed' | 'failed'
   created_at: string
   updated_at: string

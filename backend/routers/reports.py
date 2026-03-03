@@ -67,9 +67,7 @@ async def _get_template_or_404(db: AsyncSession, template_id: UUID) -> ReportTem
     Raises:
         HTTPException: 404 if no template with the given ID exists.
     """
-    result = await db.execute(
-        select(ReportTemplate).where(ReportTemplate.id == template_id)
-    )
+    result = await db.execute(select(ReportTemplate).where(ReportTemplate.id == template_id))
     template = result.scalar_one_or_none()
     if template is None:
         raise HTTPException(
@@ -209,8 +207,7 @@ async def download_report(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
-                f"PDF file for report {report_id} was recorded but is missing "
-                "from the filesystem."
+                f"PDF file for report {report_id} was recorded but is missing from the filesystem."
             ),
         )
 
@@ -218,6 +215,83 @@ async def download_report(
         path=str(pdf_path),
         media_type="application/pdf",
         filename=pdf_path.name,
+    )
+
+
+@router.get(
+    "/reports/{report_id}/download/excel",
+    summary="Download a report as Excel",
+    response_class=FileResponse,
+)
+async def download_report_excel(
+    report_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    """Stream the generated Excel workbook for a completed report."""
+    report = await _get_report_or_404(db, report_id)
+    if not report.excel_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report {report_id} has no Excel file available yet.",
+        )
+
+    stored = Path(report.excel_path)
+    if stored.is_absolute():
+        excel_path = stored
+    else:
+        excel_path = Path(settings.REPORTS_DIR).resolve() / stored
+
+    if not excel_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Excel file for report {report_id} was recorded but is missing "
+                "from the filesystem."
+            ),
+        )
+
+    return FileResponse(
+        path=str(excel_path),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=excel_path.name,
+    )
+
+
+@router.get(
+    "/reports/{report_id}/download/zip",
+    summary="Download a report as Zip bundle",
+    response_class=FileResponse,
+)
+async def download_report_zip(
+    report_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    """Stream the generated zip bundle (Excel + Markdown) for a completed report."""
+    report = await _get_report_or_404(db, report_id)
+    if not report.zip_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report {report_id} has no zip bundle available yet.",
+        )
+
+    stored = Path(report.zip_path)
+    if stored.is_absolute():
+        zip_path = stored
+    else:
+        zip_path = Path(settings.REPORTS_DIR).resolve() / stored
+
+    if not zip_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Zip file for report {report_id} was recorded but is missing from the filesystem."
+            ),
+        )
+
+    return FileResponse(
+        path=str(zip_path),
+        media_type="application/zip",
+        filename=zip_path.name,
     )
 
 
@@ -250,9 +324,7 @@ async def list_customer_reports(
         )
 
     result = await db.execute(
-        select(Report)
-        .where(Report.customer_id == customer_id)
-        .order_by(Report.created_at.desc())
+        select(Report).where(Report.customer_id == customer_id).order_by(Report.created_at.desc())
     )
     reports = list(result.scalars().all())
     return [ReportResponse.model_validate(r) for r in reports]
@@ -279,9 +351,7 @@ async def list_templates(
     Returns:
         A list of template records, possibly empty.
     """
-    result = await db.execute(
-        select(ReportTemplate).order_by(ReportTemplate.name)
-    )
+    result = await db.execute(select(ReportTemplate).order_by(ReportTemplate.name))
     templates = list(result.scalars().all())
     return [TemplateResponse.model_validate(t) for t in templates]
 

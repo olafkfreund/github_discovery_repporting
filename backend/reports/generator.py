@@ -25,6 +25,7 @@ Typical usage::
 import asyncio
 import logging
 import re
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -33,7 +34,10 @@ from backend.analysis.platform_context import get_platform_context
 from backend.analysis.schemas import AnalysisResult
 from backend.config import settings
 from backend.models.enums import Category, Platform
+from backend.reports.excel import ExcelRenderer
+from backend.reports.markdown import MarkdownRenderer
 from backend.reports.pdf import PDFRenderer
+from backend.reports.zip_bundler import ZipBundler
 from backend.scanners.base import CheckResult
 from backend.scanners.orchestrator import CategoryScore
 
@@ -146,6 +150,9 @@ class ReportGenerator:
             templates_dir=_TEMPLATES_DIR,
             styles_dir=_STYLES_DIR,
         )
+        self._excel_renderer = ExcelRenderer()
+        self._markdown_renderer = MarkdownRenderer()
+        self._zip_bundler = ZipBundler()
         self._reports_dir = Path(settings.REPORTS_DIR).resolve()
         self._reports_dir.mkdir(parents=True, exist_ok=True)
         logger.debug("ReportGenerator initialised; output dir=%s", self._reports_dir)
@@ -222,11 +229,111 @@ class ReportGenerator:
 
         # Write PDF in a thread to avoid blocking the async event loop
         # (WeasyPrint's rendering is synchronous and can take several seconds).
-        result_path = await asyncio.to_thread(
-            self._renderer.generate_pdf, html, output_path
-        )
+        result_path = await asyncio.to_thread(self._renderer.generate_pdf, html, output_path)
 
         logger.info("Report generated successfully: %s", result_path)
+        return result_path
+
+    async def generate_excel_report(
+        self,
+        scan_id: UUID,
+        customer_name: str,
+        org_name: str,
+        analysis_result: AnalysisResult,
+        category_scores: dict[Category, CategoryScore],
+        overall_score: float,
+        findings: list[CheckResult],
+        dora_level: str,
+        platform: Platform = Platform.github,
+    ) -> Path:
+        """Generate an Excel (.xlsx) report for a completed scan."""
+        logger.info("Generating Excel report for scan_id=%s", scan_id)
+
+        findings_list = _build_findings_list(findings)
+        report_data = self._build_report_data(
+            scan_id=scan_id,
+            customer_name=customer_name,
+            org_name=org_name,
+            analysis_result=analysis_result,
+            category_scores=category_scores,
+            overall_score=overall_score,
+            findings_list=findings_list,
+            dora_level=dora_level,
+            platform=platform,
+        )
+
+        output_path = self._build_output_path(
+            customer_name=customer_name,
+            scan_id=scan_id,
+            extension=".xlsx",
+        )
+
+        result_path = await asyncio.to_thread(
+            self._excel_renderer.generate_excel, report_data, output_path
+        )
+        logger.info("Excel report generated: %s", result_path)
+        return result_path
+
+    async def generate_zip_bundle(
+        self,
+        scan_id: UUID,
+        customer_name: str,
+        org_name: str,
+        analysis_result: AnalysisResult,
+        category_scores: dict[Category, CategoryScore],
+        overall_score: float,
+        findings: list[CheckResult],
+        dora_level: str,
+        platform: Platform = Platform.github,
+    ) -> Path:
+        """Generate a .zip bundle containing Excel and Markdown reports."""
+        logger.info("Generating zip bundle for scan_id=%s", scan_id)
+
+        findings_list = _build_findings_list(findings)
+        report_data = self._build_report_data(
+            scan_id=scan_id,
+            customer_name=customer_name,
+            org_name=org_name,
+            analysis_result=analysis_result,
+            category_scores=category_scores,
+            overall_score=overall_score,
+            findings_list=findings_list,
+            dora_level=dora_level,
+            platform=platform,
+        )
+
+        # Generate Excel into a temp location within the reports dir
+        excel_path = self._build_output_path(
+            customer_name=customer_name,
+            scan_id=scan_id,
+            extension=".xlsx",
+            suffix="_bundle",
+        )
+        await asyncio.to_thread(self._excel_renderer.generate_excel, report_data, excel_path)
+
+        # Generate Markdown into a subdirectory
+        md_dir = self._reports_dir / f"_md_{_slugify(customer_name)}_{str(scan_id).split('-')[0]}"
+        await asyncio.to_thread(self._markdown_renderer.generate_markdown, report_data, md_dir)
+
+        # Bundle into zip
+        zip_path = self._build_output_path(
+            customer_name=customer_name,
+            scan_id=scan_id,
+            extension=".zip",
+        )
+
+        zip_files: list[tuple[Path, str]] = [
+            (excel_path, "report.xlsx"),
+            (md_dir, "markdown"),
+        ]
+
+        result_path = await asyncio.to_thread(self._zip_bundler.create_zip, zip_files, zip_path)
+
+        # Clean up intermediate files
+        excel_path.unlink(missing_ok=True)
+        shutil.rmtree(md_dir, ignore_errors=True)
+
+        logger.info("Zip bundle generated: %s", result_path)
         return result_path
 
     # ------------------------------------------------------------------
@@ -259,15 +366,9 @@ class ReportGenerator:
         scan_id_short = str(scan_id).split("-")[0].upper()
 
         # Serialise Pydantic models to plain dicts for the templates.
-        category_narratives = [
-            n.model_dump() for n in analysis_result.category_narratives
-        ]
-        recommendations = [
-            r.model_dump() for r in analysis_result.recommendations
-        ]
-        benchmark_comparisons = [
-            b.model_dump() for b in analysis_result.benchmark_comparisons
-        ]
+        category_narratives = [n.model_dump() for n in analysis_result.category_narratives]
+        recommendations = [r.model_dump() for r in analysis_result.recommendations]
+        benchmark_comparisons = [b.model_dump() for b in analysis_result.benchmark_comparisons]
 
         platform_ctx = get_platform_context(platform)
 
@@ -299,20 +400,25 @@ class ReportGenerator:
             "findings_by_category": _build_findings_by_category(findings_list),
         }
 
-    def _build_output_path(self, *, customer_name: str, scan_id: UUID) -> Path:
-        """Build the output file path for the generated PDF.
+    def _build_output_path(
+        self,
+        *,
+        customer_name: str,
+        scan_id: UUID,
+        extension: str = ".pdf",
+        suffix: str = "",
+    ) -> Path:
+        """Build the output file path for a generated report artifact.
 
         Filename format::
 
-            {customer_slug}_{scan_id_short}_{YYYYMMDD}.pdf
-
-        Example::
-
-            acme-corp_1A2B3C4D_20260227.pdf
+            {customer_slug}_{scan_id_short}_{YYYYMMDD}{suffix}{extension}
 
         Parameters:
             customer_name: Human-readable customer name (will be slugified).
             scan_id: UUID for the scan (first segment used as short ID).
+            extension: File extension including the dot (e.g. ".pdf", ".xlsx").
+            suffix: Optional suffix before the extension (e.g. "_bundle").
 
         Returns:
             Full absolute path under :attr:`_reports_dir`.
@@ -320,7 +426,7 @@ class ReportGenerator:
         customer_slug = _slugify(customer_name)
         scan_id_short = str(scan_id).split("-")[0].upper()
         date_str = datetime.now(tz=UTC).strftime("%Y%m%d")
-        filename = f"{customer_slug}_{scan_id_short}_{date_str}.pdf"
+        filename = f"{customer_slug}_{scan_id_short}_{date_str}{suffix}{extension}"
         return self._reports_dir / filename
 
 

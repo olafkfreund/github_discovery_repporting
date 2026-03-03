@@ -146,6 +146,12 @@ export const api = {
   downloadReport: (id: string) =>
     `${BASE_URL}/reports/${id}/download`,
 
+  downloadReportExcel: (id: string) =>
+    `${BASE_URL}/reports/${id}/download/excel`,
+
+  downloadReportZip: (id: string) =>
+    `${BASE_URL}/reports/${id}/download/zip`,
+
   // Dashboard
   getStats: () =>
     request<DashboardStats>('/dashboard/stats'),

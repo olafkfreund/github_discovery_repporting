@@ -756,7 +756,7 @@ export default function CustomerDetailPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">DORA Level</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Generated</th>
-                    <th className="px-4 py-3" />
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Downloads</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -773,16 +773,40 @@ export default function CustomerDetailPage() {
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {new Date(report.generated_at).toLocaleDateString()}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        {report.status === 'completed' && report.pdf_path && (
-                          <a
-                            href={api.downloadReport(report.id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
-                          >
-                            Download PDF
-                          </a>
+                      <td className="px-4 py-3">
+                        {report.status === 'completed' && (
+                          <div className="flex gap-2">
+                            {report.pdf_path && (
+                              <a
+                                href={api.downloadReport(report.id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs font-medium px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                              >
+                                PDF
+                              </a>
+                            )}
+                            {report.excel_path && (
+                              <a
+                                href={api.downloadReportExcel(report.id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs font-medium px-2 py-1 rounded bg-green-50 text-green-700 hover:bg-green-100"
+                              >
+                                Excel
+                              </a>
+                            )}
+                            {report.zip_path && (
+                              <a
+                                href={api.downloadReportZip(report.id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs font-medium px-2 py-1 rounded bg-purple-50 text-purple-700 hover:bg-purple-100"
+                              >
+                                Zip
+                              </a>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>

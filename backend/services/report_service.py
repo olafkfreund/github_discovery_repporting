@@ -228,14 +228,10 @@ async def generate_report_for_scan(
             # ------------------------------------------------------------------
             # Step 4 & 5: Load findings and scores.
             # ------------------------------------------------------------------
-            findings_result = await db.execute(
-                select(Finding).where(Finding.scan_id == scan.id)
-            )
+            findings_result = await db.execute(select(Finding).where(Finding.scan_id == scan.id))
             findings: list[Finding] = list(findings_result.scalars().all())
 
-            scores_result = await db.execute(
-                select(ScanScore).where(ScanScore.scan_id == scan.id)
-            )
+            scores_result = await db.execute(select(ScanScore).where(ScanScore.scan_id == scan.id))
             scan_scores: list[ScanScore] = list(scores_result.scalars().all())
 
             # ------------------------------------------------------------------
@@ -286,23 +282,57 @@ async def generate_report_for_scan(
             # Store the path relative to the configured reports directory so
             # the record remains portable across deployments.
             reports_root = Path(settings.REPORTS_DIR).resolve()
-            try:
-                pdf_relative = str(pdf_abs_path.relative_to(reports_root))
-            except ValueError:
-                # Fallback: store the absolute path if it falls outside the
-                # configured root (e.g. during testing with temp directories).
-                pdf_relative = str(pdf_abs_path)
+
+            def _relative(abs_path: Path) -> str:
+                try:
+                    return str(abs_path.relative_to(reports_root))
+                except ValueError:
+                    return str(abs_path)
+
+            pdf_relative = _relative(pdf_abs_path)
+
+            # ------------------------------------------------------------------
+            # Step 10b: Generate Excel report.
+            # ------------------------------------------------------------------
+            excel_abs_path: Path = await report_generator.generate_excel_report(
+                scan_id=scan.id,
+                customer_name=customer.name,
+                org_name=connection.org_or_group,
+                analysis_result=analysis_result,
+                category_scores=category_scores,
+                overall_score=overall_score,
+                findings=check_results,
+                dora_level=classify_dora_level(overall_score),
+                platform=connection.platform,
+            )
+            excel_relative = _relative(excel_abs_path)
+
+            # ------------------------------------------------------------------
+            # Step 10c: Generate zip bundle (Excel + Markdown).
+            # ------------------------------------------------------------------
+            zip_abs_path: Path = await report_generator.generate_zip_bundle(
+                scan_id=scan.id,
+                customer_name=customer.name,
+                org_name=connection.org_or_group,
+                analysis_result=analysis_result,
+                category_scores=category_scores,
+                overall_score=overall_score,
+                findings=check_results,
+                dora_level=classify_dora_level(overall_score),
+                platform=connection.platform,
+            )
+            zip_relative = _relative(zip_abs_path)
 
             # ------------------------------------------------------------------
             # Step 11: Persist results.
             # ------------------------------------------------------------------
             report.ai_summary = analysis_result.executive_summary
-            report.ai_recommendations = [
-                r.model_dump() for r in analysis_result.recommendations
-            ]
+            report.ai_recommendations = [r.model_dump() for r in analysis_result.recommendations]
             report.overall_score = overall_score
             report.dora_level = classify_dora_level(overall_score)
             report.pdf_path = pdf_relative
+            report.excel_path = excel_relative
+            report.zip_path = zip_relative
             report.status = ReportStatus.completed
 
             await db.commit()
@@ -324,17 +354,14 @@ async def generate_report_for_scan(
             try:
                 # Re-fetch to avoid working with a potentially stale/detached
                 # instance after the exception.
-                err_result = await db.execute(
-                    select(Report).where(Report.id == report_id)
-                )
+                err_result = await db.execute(select(Report).where(Report.id == report_id))
                 failed_report = err_result.scalar_one_or_none()
                 if failed_report is not None:
                     failed_report.status = ReportStatus.failed
                     await db.commit()
             except Exception:
                 logger.exception(
-                    "generate_report_for_scan: could not persist failed "
-                    "status for report=%s",
+                    "generate_report_for_scan: could not persist failed status for report=%s",
                     report_id,
                 )
 

@@ -66,6 +66,8 @@ class Report(UUIDMixin, TimestampMixin, Base):
     overall_score: Mapped[float | None] = mapped_column(Float)
     dora_level: Mapped[str | None] = mapped_column(String)
     pdf_path: Mapped[str | None] = mapped_column(String)
+    excel_path: Mapped[str | None] = mapped_column(String)
+    zip_path: Mapped[str | None] = mapped_column(String)
     status: Mapped[ReportStatus] = mapped_column(default=ReportStatus.pending)
 
     # Relationships
