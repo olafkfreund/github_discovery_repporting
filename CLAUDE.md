@@ -31,7 +31,7 @@ just check                   # Lint + typecheck
 ## Architecture
 
 ```
-FastAPI REST API -> Provider Layer (GitHub/GitLab/Azure) -> Scanner Engine -> AI Analyzer -> PDF Reports
+FastAPI REST API -> Provider Layer (GitHub/GitLab/Azure) -> Scanner Engine -> AI Analyzer -> PDF/Excel/Zip Reports
 ```
 
 ### Provider Layer (`backend/providers/`)
@@ -88,7 +88,11 @@ Platform abstraction with normalized models. Implements `PlatformProvider` and `
 ### Analysis & Reports
 
 - `backend/analysis/` — Claude AI integration with structured outputs, fallback scoring
-- `backend/reports/` — WeasyPrint PDF generation from Jinja2 templates
+- `backend/reports/` — Report generation (PDF, Excel, Markdown, Zip)
+  - `backend/reports/pdf.py` — WeasyPrint PDF generation from Jinja2 templates
+  - `backend/reports/excel.py` — ExcelRenderer: multi-sheet .xlsx workbook (Cover, Executive Summary, Category Scores, Recommendations, Benchmarks, All Findings)
+  - `backend/reports/markdown.py` — MarkdownRenderer: 6 structured .md files for documentation/version control
+  - `backend/reports/zip_bundler.py` — ZipBundler: packages Excel + Markdown into .zip archive
 - `backend/benchmarks/` — OpenSSF, DORA, SLSA, CIS benchmark mappings
 
 ### Scan Profiles (`backend/models/scan_profile.py`, `backend/routers/scan_profiles.py`)
@@ -111,6 +115,13 @@ Config is snapshotted into `Scan.scan_config` at scan trigger time for reproduci
 | PUT | `/api/scan-profiles/{id}` | Update profile |
 | DELETE | `/api/scan-profiles/{id}` | Delete profile |
 
+**Report download endpoints:**
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/api/reports/{id}/download/excel` | Download Excel report |
+| GET | `/api/reports/{id}/download/zip` | Download zip bundle (Excel + Markdown) |
+
 **Frontend:** Profile editor at `/customers/:id/scan-profiles` with category toggles, weight inputs, check toggles, threshold editors, and weight summary. Profile selector in scan trigger form on CustomerDetailPage.
 
 ### Scan Pipeline
@@ -122,7 +133,9 @@ Config is snapshotted into `Scan.scan_config` at scan trigger time for reproduci
 5. Persist findings (org-level findings have `scan_repo_id=None`)
 6. Compute per-category scores (filtered by scan profile config if present)
 7. AI analysis generates summary and recommendations
-8. PDF report generated
+7b. Excel report generated (multi-sheet workbook)
+7c. Zip bundle generated (Excel + Markdown)
+8. PDF, Excel, and Zip reports generated
 
 ## Key Conventions
 
@@ -133,4 +146,5 @@ Config is snapshotted into `Scan.scan_config` at scan trigger time for reproduci
 - Pydantic schemas for all API request/response models
 - Scanner classes inherit from `BaseScanner` and use `_bool_check()`/`_manual_review()`/`_threshold()` helpers
 - Check IDs use domain prefixes: PLAT-, IAM-, REPO-, CICD-, SEC-, DEP-, SAST-, DAST-, CNTR-, CQ-, SDLC-, COMP-, COLLAB-, DR-, MON-, MIG-
+- Report model stores `pdf_path`, `excel_path`, and `zip_path` as relative paths under `REPORTS_DIR`
 - No authentication (internal network tool)

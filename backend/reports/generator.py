@@ -285,8 +285,18 @@ class ReportGenerator:
         findings: list[CheckResult],
         dora_level: str,
         platform: Platform = Platform.github,
+        excel_path: Path | None = None,
     ) -> Path:
-        """Generate a .zip bundle containing Excel and Markdown reports."""
+        """Generate a .zip bundle containing Excel and Markdown reports.
+
+        Parameters:
+            excel_path: When provided, the existing Excel file at this path is
+                reused as ``report.xlsx`` inside the zip without regenerating
+                it.  The file is **not** deleted after bundling — ownership
+                stays with the caller.  When ``None`` (the default), an
+                internal ``_bundle``-suffixed Excel is generated and cleaned up
+                automatically after the zip is created.
+        """
         logger.info("Generating zip bundle for scan_id=%s", scan_id)
 
         findings_list = _build_findings_list(findings)
@@ -302,14 +312,19 @@ class ReportGenerator:
             platform=platform,
         )
 
-        # Generate Excel into a temp location within the reports dir
-        excel_path = self._build_output_path(
-            customer_name=customer_name,
-            scan_id=scan_id,
-            extension=".xlsx",
-            suffix="_bundle",
-        )
-        await asyncio.to_thread(self._excel_renderer.generate_excel, report_data, excel_path)
+        # Determine the Excel source for the zip.
+        # When excel_path is supplied we reuse it directly; otherwise we
+        # generate a temporary bundle-specific copy that we own and must clean
+        # up afterwards.
+        owns_excel = excel_path is None
+        if owns_excel:
+            excel_path = self._build_output_path(
+                customer_name=customer_name,
+                scan_id=scan_id,
+                extension=".xlsx",
+                suffix="_bundle",
+            )
+            await asyncio.to_thread(self._excel_renderer.generate_excel, report_data, excel_path)
 
         # Generate Markdown into a subdirectory
         md_dir = self._reports_dir / f"_md_{_slugify(customer_name)}_{str(scan_id).split('-')[0]}"
@@ -329,8 +344,11 @@ class ReportGenerator:
 
         result_path = await asyncio.to_thread(self._zip_bundler.create_zip, zip_files, zip_path)
 
-        # Clean up intermediate files
-        excel_path.unlink(missing_ok=True)
+        # Clean up intermediate files.
+        # Only delete the Excel if we generated it ourselves; when the caller
+        # passed excel_path they retain ownership of that file.
+        if owns_excel:
+            excel_path.unlink(missing_ok=True)
         shutil.rmtree(md_dir, ignore_errors=True)
 
         logger.info("Zip bundle generated: %s", result_path)

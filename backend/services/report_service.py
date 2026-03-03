@@ -309,6 +309,9 @@ async def generate_report_for_scan(
 
             # ------------------------------------------------------------------
             # Step 10c: Generate zip bundle (Excel + Markdown).
+            # Pass the already-generated excel_abs_path so generate_zip_bundle
+            # reuses it directly instead of rebuilding report_data and
+            # re-rendering the Excel a second time.
             # ------------------------------------------------------------------
             zip_abs_path: Path = await report_generator.generate_zip_bundle(
                 scan_id=scan.id,
@@ -320,6 +323,7 @@ async def generate_report_for_scan(
                 findings=check_results,
                 dora_level=classify_dora_level(overall_score),
                 platform=connection.platform,
+                excel_path=excel_abs_path,
             )
             zip_relative = _relative(zip_abs_path)
 
