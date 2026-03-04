@@ -398,6 +398,19 @@ export default function CustomerDetailPage() {
     void loadAll()
   }, [loadAll])
 
+  // Poll reports while any are pending/generating
+  const hasPendingReport = reports.some((r) => r.status === 'pending' || r.status === 'generating')
+  useEffect(() => {
+    if (!hasPendingReport || !id) return
+    const interval = setInterval(async () => {
+      try {
+        const fresh = await api.listReports(id)
+        setReports(fresh)
+      } catch { /* ignore poll errors */ }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [hasPendingReport, id])
+
   // Validate a connection
   const handleValidate = async (connId: string) => {
     setValidatingId(connId)

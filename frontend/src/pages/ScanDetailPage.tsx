@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Scan, ScanScore, Finding } from '../types'
+import type { Scan, ScanScore, Finding, Report } from '../types'
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -91,6 +91,7 @@ export default function ScanDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [generatingReport, setGeneratingReport] = useState(false)
   const [reportMessage, setReportMessage] = useState<string | null>(null)
+  const [generatedReport, setGeneratedReport] = useState<Report | null>(null)
 
   // Filters
   const [filterCategory, setFilterCategory] = useState(ALL_OPTION)
@@ -125,15 +126,36 @@ export default function ScanDetailPage() {
     if (!id) return
     setGeneratingReport(true)
     setReportMessage(null)
+    setGeneratedReport(null)
     try {
       const report = await api.generateReport(id)
-      setReportMessage(`Report "${report.title}" queued successfully (ID: ${report.id.slice(0, 8)}…)`)
+      setGeneratedReport(report)
+      setReportMessage(`Report "${report.title}" queued — generating PDF, Excel & Zip…`)
     } catch (err) {
       setReportMessage(err instanceof Error ? err.message : 'Failed to generate report')
     } finally {
       setGeneratingReport(false)
     }
   }
+
+  // Poll the generated report until it reaches a terminal status
+  const reportPending = generatedReport != null &&
+    (generatedReport.status === 'pending' || generatedReport.status === 'generating')
+  useEffect(() => {
+    if (!reportPending || !generatedReport) return
+    const interval = setInterval(async () => {
+      try {
+        const fresh = await api.getReport(generatedReport.id)
+        setGeneratedReport(fresh)
+        if (fresh.status === 'completed') {
+          setReportMessage('Report ready — download below.')
+        } else if (fresh.status === 'failed') {
+          setReportMessage('Report generation failed.')
+        }
+      } catch { /* ignore poll errors */ }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [reportPending, generatedReport?.id])
 
   // Derive unique filter options
   const categories = [ALL_OPTION, ...new Set(findings.map((f) => f.category))]
@@ -191,21 +213,55 @@ export default function ScanDetailPage() {
             <p className="text-sm font-mono text-gray-400 mt-1">{scan.id}</p>
           </div>
           {scan.status === 'completed' && (
-            <div>
+            <div className="flex flex-col items-end gap-2">
               {reportMessage && (
-                <p className="text-xs text-gray-600 mb-2 max-w-xs text-right">{reportMessage}</p>
+                <p className="text-xs text-gray-600 max-w-xs text-right">{reportMessage}</p>
               )}
               <button
                 onClick={() => { void handleGenerateReport() }}
-                disabled={generatingReport}
+                disabled={generatingReport || reportPending}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm
                            font-medium rounded-md hover:bg-green-700 disabled:opacity-50"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
-                {generatingReport ? 'Generating…' : 'Generate Report'}
+                {generatingReport || reportPending ? 'Generating…' : 'Generate Report'}
               </button>
+              {generatedReport?.status === 'completed' && (
+                <div className="flex gap-2">
+                  {generatedReport.pdf_path && (
+                    <a
+                      href={api.downloadReport(generatedReport.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                    >
+                      PDF
+                    </a>
+                  )}
+                  {generatedReport.excel_path && (
+                    <a
+                      href={api.downloadReportExcel(generatedReport.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium px-2 py-1 rounded bg-green-50 text-green-700 hover:bg-green-100"
+                    >
+                      Excel
+                    </a>
+                  )}
+                  {generatedReport.zip_path && (
+                    <a
+                      href={api.downloadReportZip(generatedReport.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium px-2 py-1 rounded bg-purple-50 text-purple-700 hover:bg-purple-100"
+                    >
+                      Zip
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
