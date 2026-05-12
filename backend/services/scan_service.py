@@ -334,17 +334,17 @@ async def _maybe_dispatch_agent_run(session: AsyncSession, scan: Scan) -> None:
     """Optionally schedule an :class:`~backend.models.agent_runs.AgentRun` after scan completion.
 
     Checks whether the customer has opted into auto-dispatch via
-    ``RemediationPolicy.auto_dispatch``.  Because the ``RemediationPolicy``
-    model lands in Phase 4 (epic #5) and does NOT exist on the schema yet,
-    all policy attribute access is performed defensively via :func:`getattr`
-    so that this function degrades gracefully to a no-op until the model is
-    added.
+    ``RemediationPolicy.auto_dispatch``.  The ``RemediationPolicy`` relationship
+    is eager-loaded (``lazy="selectin"``) so the policy is available immediately
+    after loading the customer row.  When no policy row exists,
+    ``customer.remediation_policy`` is ``None`` and both ``auto_dispatch`` and
+    ``kill_switch_enabled`` default to ``False``.
 
     The hook:
 
-    1. Loads the customer row.
-    2. Reads ``customer.remediation_policy.auto_dispatch`` via ``getattr``
-       (defaults to ``False`` when the attribute / row is absent).
+    1. Loads the customer row (policy eager-loaded via selectin).
+    2. Reads ``customer.remediation_policy.auto_dispatch`` (``False`` when policy
+       is ``None``).
     3. Short-circuits if ``auto_dispatch`` is ``False`` or ``kill_switch_enabled``
        is ``True``.
     4. Picks the customer's default LLM connection; logs and returns when none
@@ -370,11 +370,11 @@ async def _maybe_dispatch_agent_run(session: AsyncSession, scan: Scan) -> None:
         if customer is None:
             return
 
-        # Phase-4 RemediationPolicy not yet on the schema — defensive getattr.
-        # When the model lands, these attributes will resolve naturally.
-        remediation_policy = getattr(customer, "remediation_policy", None)
-        auto_dispatch = bool(getattr(remediation_policy, "auto_dispatch", False))
-        kill_switch = bool(getattr(remediation_policy, "kill_switch_enabled", False))
+        # RemediationPolicy is eager-loaded via lazy="selectin" on the relationship,
+        # so it arrives automatically with the customer row.
+        policy = customer.remediation_policy
+        auto_dispatch = bool(policy and policy.auto_dispatch)
+        kill_switch = bool(policy and policy.kill_switch_enabled)
 
         if not auto_dispatch:
             return

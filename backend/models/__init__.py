@@ -25,6 +25,7 @@ from backend.models.enums import (
 )
 from backend.models.finding import Finding, ScanScore
 from backend.models.llm import LLMConnection
+from backend.models.remediation_policy import RemediationPolicy
 from backend.models.report import Report, ReportTemplate
 from backend.models.requirement import CustomRequirement, RequirementResult
 from backend.models.scan import Scan, ScanRepo
@@ -58,6 +59,7 @@ __all__ = [
     "LLMConnection",
     "PlatformConnection",
     "RemediationAction",
+    "RemediationPolicy",
     "Report",
     "ReportTemplate",
     "RequirementResult",

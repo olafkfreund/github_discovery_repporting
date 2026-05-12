@@ -14,6 +14,7 @@ from backend.models.enums import AuthType, Platform
 if TYPE_CHECKING:
     from backend.models.agent_instructions import AgentInstructions
     from backend.models.llm import LLMConnection
+    from backend.models.remediation_policy import RemediationPolicy
     from backend.models.scan import Scan
     from backend.models.scan_profile import ScanProfile
     from backend.models.skill import Skill, SkillToggle
@@ -59,6 +60,13 @@ class Customer(UUIDMixin, TimestampMixin, Base):
         back_populates="customer",
         uselist=False,
         cascade="all, delete-orphan",
+    )
+    remediation_policy: Mapped[RemediationPolicy | None] = relationship(
+        "RemediationPolicy",
+        back_populates="customer",
+        uselist=False,
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
     enable_scan_enrichment: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"

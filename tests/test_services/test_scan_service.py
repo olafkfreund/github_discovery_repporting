@@ -1,15 +1,11 @@
 """Tests for backend.services.scan_service — auto-dispatch hook.
 
-Tests the ``_maybe_dispatch_agent_run`` behaviour added for issue #32.
-
-Because ``RemediationPolicy`` does not exist on the schema yet (Phase 4),
-the tests inject a fake policy object on the customer via monkeypatching
-the ``session.get`` call inside ``_maybe_dispatch_agent_run``.  This mirrors
-the defensive ``getattr`` approach used in the implementation.
+Tests the ``_maybe_dispatch_agent_run`` behaviour added for issue #32,
+updated for issue #43 which materialises the ``RemediationPolicy`` model.
 
 Strategy:
   - Use an in-memory SQLite engine (mirrors conftest.py pattern) for setup.
-  - Mock ``session.get`` to return a customer with the desired policy attribute.
+  - Insert real ``RemediationPolicy`` rows linked to the customer under test.
   - Mock ``agent_service.create_agent_run`` and ``trigger_backend_run`` to avoid
     real DB/background-task side-effects.
   - Patch ``backend.database.AsyncSessionLocal`` via ``backend.database`` module
@@ -21,7 +17,6 @@ from __future__ import annotations
 import json
 import uuid
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -38,6 +33,7 @@ from backend.models.enums import (
     ScanStatus,
 )
 from backend.models.llm import LLMConnection
+from backend.models.remediation_policy import RemediationPolicy
 from backend.models.scan import Scan
 from backend.services.secrets_service import secrets_service
 
@@ -126,23 +122,22 @@ async def _build_scan_scaffold(db: AsyncSession) -> dict:
     return {"customer": customer, "conn": conn, "llm": llm, "scan": scan}
 
 
-# ---------------------------------------------------------------------------
-# Helper: fake RemediationPolicy via SimpleNamespace
-# ---------------------------------------------------------------------------
-
-
-def _fake_policy(*, auto_dispatch: bool, kill_switch: bool = False) -> SimpleNamespace:
-    """Return an object that mimics a future RemediationPolicy instance."""
-    return SimpleNamespace(auto_dispatch=auto_dispatch, kill_switch_enabled=kill_switch)
-
-
-def _customer_with_policy(customer: Customer, policy: SimpleNamespace | None) -> Customer:
-    """Attach *policy* to *customer* as if it were a RemediationPolicy relationship.
-
-    Returns the same customer object with the attribute set.
-    """
-    customer.remediation_policy = policy  # type: ignore[attr-defined]
-    return customer
+async def _add_policy(
+    db: AsyncSession,
+    customer_id: uuid.UUID,
+    *,
+    auto_dispatch: bool,
+    kill_switch_enabled: bool = False,
+) -> RemediationPolicy:
+    """Insert a RemediationPolicy row for the given customer and commit."""
+    policy = RemediationPolicy(
+        customer_id=customer_id,
+        auto_dispatch=auto_dispatch,
+        kill_switch_enabled=kill_switch_enabled,
+    )
+    db.add(policy)
+    await db.commit()
+    return policy
 
 
 # ---------------------------------------------------------------------------
@@ -163,17 +158,17 @@ async def _fake_session_ctx(session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_no_remediation_policy_no_dispatch(scan_svc_db) -> None:
-    """Customer with no remediation_policy attribute → no AgentRun created.
+    """Customer with no RemediationPolicy row → no AgentRun created.
 
-    The defensive ``getattr(remediation_policy, "auto_dispatch", False)``
-    returns False when ``remediation_policy`` is None.
+    When ``customer.remediation_policy`` is ``None``, both ``auto_dispatch``
+    and ``kill_switch_enabled`` evaluate to ``False``.
     """
     from backend.services.scan_service import _maybe_dispatch_agent_run
 
     scaffold = await _build_scan_scaffold(scan_svc_db)
     scan = scaffold["scan"]
     customer = scaffold["customer"]
-    # No remediation_policy on the customer — getattr returns None → auto_dispatch=False.
+    # No RemediationPolicy row inserted — customer.remediation_policy is None.
 
     with (
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
@@ -192,7 +187,10 @@ async def test_auto_dispatch_false_no_dispatch(scan_svc_db) -> None:
 
     scaffold = await _build_scan_scaffold(scan_svc_db)
     scan = scaffold["scan"]
-    customer = _customer_with_policy(scaffold["customer"], _fake_policy(auto_dispatch=False))
+    customer = scaffold["customer"]
+    await _add_policy(scan_svc_db, customer.id, auto_dispatch=False)
+    # Reload customer so the selectin relationship is populated.
+    await scan_svc_db.refresh(customer)
 
     with (
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
@@ -211,9 +209,9 @@ async def test_auto_dispatch_true_kill_switch_off_dispatches(scan_svc_db) -> Non
 
     scaffold = await _build_scan_scaffold(scan_svc_db)
     scan = scaffold["scan"]
-    customer = _customer_with_policy(
-        scaffold["customer"], _fake_policy(auto_dispatch=True, kill_switch=False)
-    )
+    customer = scaffold["customer"]
+    await _add_policy(scan_svc_db, customer.id, auto_dispatch=True, kill_switch_enabled=False)
+    await scan_svc_db.refresh(customer)
 
     fake_run = MagicMock()
     fake_run.id = uuid.uuid4()
@@ -249,9 +247,9 @@ async def test_auto_dispatch_true_kill_switch_active_no_dispatch(scan_svc_db) ->
 
     scaffold = await _build_scan_scaffold(scan_svc_db)
     scan = scaffold["scan"]
-    customer = _customer_with_policy(
-        scaffold["customer"], _fake_policy(auto_dispatch=True, kill_switch=True)
-    )
+    customer = scaffold["customer"]
+    await _add_policy(scan_svc_db, customer.id, auto_dispatch=True, kill_switch_enabled=True)
+    await scan_svc_db.refresh(customer)
 
     with (
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
@@ -273,9 +271,9 @@ async def test_auto_dispatch_no_llm_connection_no_dispatch(scan_svc_db) -> None:
 
     scaffold = await _build_scan_scaffold(scan_svc_db)
     scan = scaffold["scan"]
-    customer = _customer_with_policy(
-        scaffold["customer"], _fake_policy(auto_dispatch=True, kill_switch=False)
-    )
+    customer = scaffold["customer"]
+    await _add_policy(scan_svc_db, customer.id, auto_dispatch=True, kill_switch_enabled=False)
+    await scan_svc_db.refresh(customer)
 
     # Remove the LLM connection so the lookup finds nothing.
     await scan_svc_db.execute(delete(LLMConn).where(LLMConn.customer_id == customer.id))
@@ -297,9 +295,9 @@ async def test_auto_dispatch_create_raises_exception_does_not_propagate(scan_svc
 
     scaffold = await _build_scan_scaffold(scan_svc_db)
     scan = scaffold["scan"]
-    customer = _customer_with_policy(
-        scaffold["customer"], _fake_policy(auto_dispatch=True, kill_switch=False)
-    )
+    customer = scaffold["customer"]
+    await _add_policy(scan_svc_db, customer.id, auto_dispatch=True, kill_switch_enabled=False)
+    await scan_svc_db.refresh(customer)
 
     with (
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
