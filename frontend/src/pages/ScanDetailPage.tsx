@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Scan, ScanScore, Finding, Report } from '../types'
+import type { AgentRunTriggerPayload } from '../types/agents'
 import { ScanStatusBadge } from '../components/ui/ScanStatusBadge'
 import { Spinner } from '../components/ui/Spinner'
 import { ErrorPanel } from '../components/ui/ErrorPanel'
+import { TriggerAgentRunDialog } from '../components/agents/TriggerAgentRunDialog'
 import { formatDate } from '../utils/format'
 
 // ── Severity badge ────────────────────────────────────────────────────────────
@@ -68,6 +70,7 @@ const ALL_OPTION = '__all__'
 
 export default function ScanDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
 
   const [scan, setScan] = useState<Scan | null>(null)
   const [scores, setScores] = useState<ScanScore[]>([])
@@ -77,6 +80,10 @@ export default function ScanDetailPage() {
   const [generatingReport, setGeneratingReport] = useState(false)
   const [reportMessage, setReportMessage] = useState<string | null>(null)
   const [generatedReport, setGeneratedReport] = useState<Report | null>(null)
+
+  const [triggerDialogOpen, setTriggerDialogOpen] = useState(false)
+  const [triggerError, setTriggerError] = useState<string | null>(null)
+  const [triggering, setTriggering] = useState(false)
 
   // Filters
   const [filterCategory, setFilterCategory] = useState(ALL_OPTION)
@@ -120,6 +127,20 @@ export default function ScanDetailPage() {
       setReportMessage(err instanceof Error ? err.message : 'Failed to generate report')
     } finally {
       setGeneratingReport(false)
+    }
+  }
+
+  const handleAgentRunConfirm = async (payload: AgentRunTriggerPayload) => {
+    setTriggering(true)
+    setTriggerError(null)
+    try {
+      const run = await api.triggerAgentRun(scan!.id, payload)
+      setTriggerDialogOpen(false)
+      navigate(`/agents/${run.id}`)
+    } catch (err) {
+      setTriggerError(err instanceof Error ? err.message : 'Failed to trigger agent run')
+    } finally {
+      setTriggering(false)
     }
   }
 
@@ -194,17 +215,32 @@ export default function ScanDetailPage() {
               {reportMessage && (
                 <p className="text-xs text-gray-600 max-w-xs text-right">{reportMessage}</p>
               )}
-              <button
-                onClick={() => { void handleGenerateReport() }}
-                disabled={generatingReport || reportPending}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm
-                           font-medium rounded-md hover:bg-green-700 disabled:opacity-50"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-                {generatingReport || reportPending ? 'Generating…' : 'Generate Report'}
-              </button>
+              {triggerError && (
+                <ErrorPanel message={triggerError} onRetry={() => setTriggerError(null)} />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { void handleGenerateReport() }}
+                  disabled={generatingReport || reportPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm
+                             font-medium rounded-md hover:bg-green-700 disabled:opacity-50"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  {generatingReport || reportPending ? 'Generating…' : 'Generate Report'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTriggerError(null); setTriggerDialogOpen(true) }}
+                  className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-md text-sm
+                             font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={triggering}
+                  aria-label="Trigger remediation agent for this scan"
+                >
+                  Remediate findings
+                </button>
+              </div>
               {generatedReport?.status === 'completed' && (
                 <div className="flex gap-2">
                   {generatedReport.pdf_path && (
@@ -295,6 +331,15 @@ export default function ScanDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Agent run dialog */}
+      <TriggerAgentRunDialog
+        open={triggerDialogOpen}
+        scanId={scan.id}
+        customerId={scan.customer_id}
+        onConfirm={handleAgentRunConfirm}
+        onCancel={() => setTriggerDialogOpen(false)}
+      />
 
       {/* Findings */}
       <div className="bg-white rounded-lg shadow">
