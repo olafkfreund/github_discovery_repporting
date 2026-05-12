@@ -8,6 +8,9 @@ import type {
   CategoryConfig,
   CategoryRegistryInfo,
 } from '../types'
+import { Spinner } from '../components/ui/Spinner'
+import { ErrorPanel } from '../components/ui/ErrorPanel'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 
 // ── Profile editor ───────────────────────────────────────────────────────────
 
@@ -328,6 +331,10 @@ export default function ScanProfilesPage() {
   const [editingProfile, setEditingProfile] = useState<ScanProfile | undefined>()
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  // ConfirmDialog state for profile deletion
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
   const loadAll = useCallback(async () => {
     if (!customerId) return
     setLoading(true)
@@ -375,36 +382,35 @@ export default function ScanProfilesPage() {
     setShowEditor(false)
   }
 
-  const handleDelete = async (profileId: string) => {
-    if (!window.confirm('Delete this scan profile?')) return
-    setDeletingId(profileId)
+  const requestDeleteProfile = (profileId: string) => {
+    setPendingDeleteId(profileId)
+    setConfirmDeleteOpen(true)
+  }
+
+  const confirmDeleteProfile = async () => {
+    if (!pendingDeleteId) return
+    setConfirmDeleteOpen(false)
+    setDeletingId(pendingDeleteId)
     try {
-      await api.deleteScanProfile(profileId)
-      setProfiles((prev) => prev.filter((p) => p.id !== profileId))
+      await api.deleteScanProfile(pendingDeleteId)
+      setProfiles((prev) => prev.filter((p) => p.id !== pendingDeleteId))
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete profile')
+      console.error(err instanceof Error ? err.message : 'Failed to delete profile')
     } finally {
       setDeletingId(null)
+      setPendingDeleteId(null)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
-      </div>
-    )
-  }
+  if (loading) return <Spinner />
 
   if (error || !customer) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-700 font-medium">Error loading data</p>
-        <p className="text-red-600 text-sm mt-1">{error ?? 'Customer not found'}</p>
+      <ErrorPanel message={error ?? 'Customer not found'}>
         <Link to="/customers" className="mt-3 inline-block text-red-700 underline text-sm">
           Back to Customers
         </Link>
-      </div>
+      </ErrorPanel>
     )
   }
 
@@ -497,7 +503,7 @@ export default function ScanProfilesPage() {
                     Edit
                   </button>
                   <button
-                    onClick={() => { void handleDelete(profile.id) }}
+                    onClick={() => requestDeleteProfile(profile.id)}
                     disabled={deletingId === profile.id}
                     className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50
                                border border-red-200 rounded-md hover:bg-red-100
@@ -511,6 +517,20 @@ export default function ScanProfilesPage() {
           })}
         </div>
       )}
+
+      {/* Confirm delete profile dialog */}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Delete Scan Profile"
+        message="Delete this scan profile? This action cannot be undone."
+        onConfirm={() => { void confirmDeleteProfile() }}
+        onCancel={() => {
+          setConfirmDeleteOpen(false)
+          setPendingDeleteId(null)
+        }}
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   )
 }

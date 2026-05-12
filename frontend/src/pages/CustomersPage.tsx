@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Customer, CustomerCreatePayload } from '../types'
+import { Spinner } from '../components/ui/Spinner'
+import { ErrorPanel } from '../components/ui/ErrorPanel'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 
 interface AddCustomerFormProps {
   onCreated: (customer: Customer) => void
@@ -123,6 +126,10 @@ export default function CustomersPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  // ConfirmDialog state for customer deletion
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
+
   const loadCustomers = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -145,16 +152,23 @@ export default function CustomersPage() {
     setShowAddForm(false)
   }
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Delete customer "${name}"? This action cannot be undone.`)) return
-    setDeletingId(id)
+  const requestDelete = (id: string, name: string) => {
+    setPendingDelete({ id, name })
+    setConfirmDeleteOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    setConfirmDeleteOpen(false)
+    setDeletingId(pendingDelete.id)
     try {
-      await api.deleteCustomer(id)
-      setCustomers((prev) => prev.filter((c) => c.id !== id))
+      await api.deleteCustomer(pendingDelete.id)
+      setCustomers((prev) => prev.filter((c) => c.id !== pendingDelete.id))
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete customer')
+      console.error(err instanceof Error ? err.message : 'Failed to delete customer')
     } finally {
       setDeletingId(null)
+      setPendingDelete(null)
     }
   }
 
@@ -190,20 +204,9 @@ export default function CustomersPage() {
 
       {/* Content */}
       {loading ? (
-        <div className="flex items-center justify-center h-48">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
-        </div>
+        <Spinner className="h-48" />
       ) : error ? (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700 font-medium">Error loading customers</p>
-          <p className="text-red-600 text-sm mt-1">{error}</p>
-          <button
-            onClick={() => { void loadCustomers() }}
-            className="mt-3 text-sm text-red-700 underline hover:no-underline"
-          >
-            Retry
-          </button>
-        </div>
+        <ErrorPanel message={error} onRetry={() => { void loadCustomers() }} />
       ) : customers.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-12 text-center">
           <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -253,7 +256,7 @@ export default function CustomersPage() {
                   </td>
                   <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                     <button
-                      onClick={() => { void handleDelete(customer.id, customer.name) }}
+                      onClick={() => requestDelete(customer.id, customer.name)}
                       disabled={deletingId === customer.id}
                       className="text-red-600 hover:text-red-700 text-sm font-medium
                                  disabled:opacity-50 disabled:cursor-not-allowed"
@@ -268,6 +271,20 @@ export default function CustomersPage() {
           </table>
         </div>
       )}
+
+      {/* Confirm delete customer dialog */}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Delete Customer"
+        message={`Delete customer "${pendingDelete?.name ?? ''}"? This action cannot be undone.`}
+        onConfirm={() => { void confirmDelete() }}
+        onCancel={() => {
+          setConfirmDeleteOpen(false)
+          setPendingDelete(null)
+        }}
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   )
 }

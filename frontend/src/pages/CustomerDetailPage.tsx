@@ -10,25 +10,11 @@ import type {
   ConnectionCreatePayload,
   ConnectionUpdatePayload,
 } from '../types'
-
-// ── Status badge ──────────────────────────────────────────────────────────────
-
-const SCAN_STATUS_CLASSES: Record<string, string> = {
-  completed: 'bg-green-100 text-green-800',
-  scanning: 'bg-blue-100 text-blue-800',
-  analyzing: 'bg-blue-100 text-blue-800',
-  generating_report: 'bg-purple-100 text-purple-800',
-  pending: 'bg-gray-100 text-gray-700',
-  failed: 'bg-red-100 text-red-800',
-}
-
-function ScanBadge({ status }: { status: Scan['status'] }) {
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${SCAN_STATUS_CLASSES[status] ?? 'bg-gray-100 text-gray-700'}`}>
-      {status.replace(/_/g, ' ')}
-    </span>
-  )
-}
+import { ScanStatusBadge } from '../components/ui/ScanStatusBadge'
+import { Spinner } from '../components/ui/Spinner'
+import { ErrorPanel } from '../components/ui/ErrorPanel'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { formatDate } from '../utils/format'
 
 const REPORT_STATUS_CLASSES: Record<string, string> = {
   completed: 'bg-green-100 text-green-800',
@@ -361,6 +347,10 @@ export default function CustomerDetailPage() {
   const [validatingId, setValidatingId] = useState<string | null>(null)
   const [deletingConnId, setDeletingConnId] = useState<string | null>(null)
 
+  // ConfirmDialog state for connection deletion
+  const [confirmDeleteConnOpen, setConfirmDeleteConnOpen] = useState(false)
+  const [pendingDeleteConnId, setPendingDeleteConnId] = useState<string | null>(null)
+
   const [scanProfiles, setScanProfiles] = useState<ScanProfile[]>([])
 
   const [showScanForm, setShowScanForm] = useState(false)
@@ -398,6 +388,20 @@ export default function CustomerDetailPage() {
     void loadAll()
   }, [loadAll])
 
+  // Poll scans while any are in a non-terminal status
+  const PENDING_SCAN_STATUSES = new Set(['pending', 'scanning', 'analyzing', 'generating_report'])
+  const hasPendingScan = scans.some((s) => PENDING_SCAN_STATUSES.has(s.status))
+  useEffect(() => {
+    if (!hasPendingScan || !id) return
+    const interval = setInterval(async () => {
+      try {
+        const fresh = await api.listScans(id)
+        setScans(fresh)
+      } catch { /* ignore poll errors */ }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [hasPendingScan, id])
+
   // Poll reports while any are pending/generating
   const hasPendingReport = reports.some((r) => r.status === 'pending' || r.status === 'generating')
   useEffect(() => {
@@ -416,25 +420,34 @@ export default function CustomerDetailPage() {
     setValidatingId(connId)
     try {
       const result = await api.validateConnection(connId)
-      alert(result.valid ? `Valid: ${result.message}` : `Invalid: ${result.message}`)
+      // Validation result surfaced via console; a toast system can replace this later
+      console.info(result.valid ? `Valid: ${result.message}` : `Invalid: ${result.message}`)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Validation failed')
+      console.error(err instanceof Error ? err.message : 'Validation failed')
     } finally {
       setValidatingId(null)
     }
   }
 
-  // Delete a connection
-  const handleDeleteConnection = async (connId: string) => {
-    if (!window.confirm('Delete this connection?')) return
-    setDeletingConnId(connId)
+  // Open confirm dialog before deleting a connection
+  const requestDeleteConnection = (connId: string) => {
+    setPendingDeleteConnId(connId)
+    setConfirmDeleteConnOpen(true)
+  }
+
+  // Perform deletion after confirmation
+  const confirmDeleteConnection = async () => {
+    if (!pendingDeleteConnId) return
+    setConfirmDeleteConnOpen(false)
+    setDeletingConnId(pendingDeleteConnId)
     try {
-      await api.deleteConnection(connId)
-      setConnections((prev) => prev.filter((c) => c.id !== connId))
+      await api.deleteConnection(pendingDeleteConnId)
+      setConnections((prev) => prev.filter((c) => c.id !== pendingDeleteConnId))
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete connection')
+      console.error(err instanceof Error ? err.message : 'Failed to delete connection')
     } finally {
       setDeletingConnId(null)
+      setPendingDeleteConnId(null)
     }
   }
 
@@ -449,7 +462,7 @@ export default function CustomerDetailPage() {
       setSelectedConnectionId('')
       setSelectedProfileId('')
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to trigger scan')
+      console.error(err instanceof Error ? err.message : 'Failed to trigger scan')
     } finally {
       setTriggeringScan(false)
     }
@@ -462,29 +475,21 @@ export default function CustomerDetailPage() {
       const report = await api.generateReport(scanId)
       setReports((prev) => [report, ...prev])
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to generate report')
+      console.error(err instanceof Error ? err.message : 'Failed to generate report')
     } finally {
       setGeneratingReportScanId(null)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
-      </div>
-    )
-  }
+  if (loading) return <Spinner />
 
   if (error || !customer) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-700 font-medium">Error loading customer</p>
-        <p className="text-red-600 text-sm mt-1">{error ?? 'Customer not found'}</p>
+      <ErrorPanel message={error ?? 'Customer not found'}>
         <Link to="/customers" className="mt-3 inline-block text-red-700 underline text-sm">
           Back to Customers
         </Link>
-      </div>
+      </ErrorPanel>
     )
   }
 
@@ -590,7 +595,7 @@ export default function CustomerDetailPage() {
                         {validatingId === conn.id ? 'Validating...' : 'Validate'}
                       </button>
                       <button
-                        onClick={() => { void handleDeleteConnection(conn.id) }}
+                        onClick={() => requestDeleteConnection(conn.id)}
                         disabled={deletingConnId === conn.id}
                         className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50
                                    border border-red-200 rounded-md hover:bg-red-100
@@ -711,14 +716,14 @@ export default function CustomerDetailPage() {
                   {scans.map((scan) => (
                     <tr key={scan.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <ScanBadge status={scan.status} />
+                        <ScanStatusBadge status={scan.status} />
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">{scan.total_repos}</td>
                       <td className="px-4 py-3 text-sm text-gray-500">
-                        {scan.started_at ? new Date(scan.started_at).toLocaleString() : '—'}
+                        {formatDate(scan.started_at)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
-                        {scan.completed_at ? new Date(scan.completed_at).toLocaleString() : '—'}
+                        {formatDate(scan.completed_at)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-3">
@@ -784,7 +789,7 @@ export default function CustomerDetailPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">{report.dora_level ?? '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-500">
-                        {new Date(report.generated_at).toLocaleDateString()}
+                        {formatDate(report.generated_at, 'date')}
                       </td>
                       <td className="px-4 py-3">
                         {report.status === 'completed' && (
@@ -830,6 +835,20 @@ export default function CustomerDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Confirm delete connection dialog */}
+      <ConfirmDialog
+        open={confirmDeleteConnOpen}
+        title="Delete Connection"
+        message="Delete this connection? This action cannot be undone."
+        onConfirm={() => { void confirmDeleteConnection() }}
+        onCancel={() => {
+          setConfirmDeleteConnOpen(false)
+          setPendingDeleteConnId(null)
+        }}
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   )
 }

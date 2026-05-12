@@ -2,25 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Scan, ScanScore, Finding, Report } from '../types'
-
-// ── Status badge ──────────────────────────────────────────────────────────────
-
-const STATUS_CLASSES: Record<string, string> = {
-  completed: 'bg-green-100 text-green-800',
-  scanning: 'bg-blue-100 text-blue-800',
-  analyzing: 'bg-blue-100 text-blue-800',
-  generating_report: 'bg-purple-100 text-purple-800',
-  pending: 'bg-gray-100 text-gray-700',
-  failed: 'bg-red-100 text-red-800',
-}
-
-function ScanBadge({ status }: { status: Scan['status'] }) {
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_CLASSES[status] ?? 'bg-gray-100 text-gray-700'}`}>
-      {status.replace(/_/g, ' ')}
-    </span>
-  )
-}
+import { ScanStatusBadge } from '../components/ui/ScanStatusBadge'
+import { Spinner } from '../components/ui/Spinner'
+import { ErrorPanel } from '../components/ui/ErrorPanel'
+import { formatDate } from '../utils/format'
 
 // ── Severity badge ────────────────────────────────────────────────────────────
 
@@ -169,23 +154,15 @@ export default function ScanDetailPage() {
     return true
   })
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
-      </div>
-    )
-  }
+  if (loading) return <Spinner />
 
   if (error || !scan) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-700 font-medium">Error loading scan</p>
-        <p className="text-red-600 text-sm mt-1">{error ?? 'Scan not found'}</p>
+      <ErrorPanel message={error ?? 'Scan not found'}>
         <Link to="/customers" className="mt-3 inline-block text-red-700 underline text-sm">
           Back to Customers
         </Link>
-      </div>
+      </ErrorPanel>
     )
   }
 
@@ -208,7 +185,7 @@ export default function ScanDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold text-gray-900">Scan Details</h2>
-              <ScanBadge status={scan.status} />
+              <ScanStatusBadge status={scan.status} />
             </div>
             <p className="text-sm font-mono text-gray-400 mt-1">{scan.id}</p>
           </div>
@@ -273,15 +250,11 @@ export default function ScanDetailPage() {
           </div>
           <div>
             <dt className="text-xs text-gray-500 uppercase tracking-wider font-medium">Started</dt>
-            <dd className="mt-1 text-sm text-gray-700">
-              {scan.started_at ? new Date(scan.started_at).toLocaleString() : '—'}
-            </dd>
+            <dd className="mt-1 text-sm text-gray-700">{formatDate(scan.started_at)}</dd>
           </div>
           <div>
             <dt className="text-xs text-gray-500 uppercase tracking-wider font-medium">Completed</dt>
-            <dd className="mt-1 text-sm text-gray-700">
-              {scan.completed_at ? new Date(scan.completed_at).toLocaleString() : '—'}
-            </dd>
+            <dd className="mt-1 text-sm text-gray-700">{formatDate(scan.completed_at)}</dd>
           </div>
           <div>
             <dt className="text-xs text-gray-500 uppercase tracking-wider font-medium">Findings</dt>

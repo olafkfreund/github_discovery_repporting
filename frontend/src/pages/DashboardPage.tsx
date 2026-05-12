@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { DashboardStats, Scan } from '../types'
+import { ScanStatusBadge } from '../components/ui/ScanStatusBadge'
+import { Spinner } from '../components/ui/Spinner'
+import { ErrorPanel } from '../components/ui/ErrorPanel'
+import { formatDate } from '../utils/format'
 
 interface StatCardProps {
   label: string
@@ -24,28 +28,6 @@ function StatCard({ label, value, icon, color }: StatCardProps) {
   )
 }
 
-const STATUS_BADGE: Record<string, string> = {
-  completed: 'bg-green-100 text-green-800',
-  scanning: 'bg-blue-100 text-blue-800',
-  analyzing: 'bg-blue-100 text-blue-800',
-  generating_report: 'bg-purple-100 text-purple-800',
-  pending: 'bg-gray-100 text-gray-700',
-  failed: 'bg-red-100 text-red-800',
-}
-
-function ScanStatusBadge({ status }: { status: Scan['status'] }) {
-  const classes = STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-700'
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${classes}`}>
-      {status.replace(/_/g, ' ')}
-    </span>
-  )
-}
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleString()
-}
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -81,22 +63,9 @@ export default function DashboardPage() {
     return () => { cancelled = true }
   }, [])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
-      </div>
-    )
-  }
+  if (loading) return <Spinner />
 
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-700 font-medium">Error loading dashboard</p>
-        <p className="text-red-600 text-sm mt-1">{error}</p>
-      </div>
-    )
-  }
+  if (error) return <ErrorPanel message={error} />
 
   return (
     <div className="space-y-8">
