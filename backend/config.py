@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+    MAX_CONCURRENT_SCANS: int = 3
+    MAX_CONCURRENT_REPORTS: int = 5
 
     model_config = SettingsConfigDict(
         env_file=".env",

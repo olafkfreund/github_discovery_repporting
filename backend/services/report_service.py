@@ -36,6 +36,7 @@ from backend.models.report import Report
 from backend.models.scan import Scan
 from backend.scanners.base import CheckResult, ScanCheck
 from backend.scanners.orchestrator import CategoryScore
+from backend.services.task_limiter import get_report_semaphore
 
 logger = logging.getLogger(__name__)
 
@@ -375,6 +376,22 @@ async def generate_report_for_scan(
 # ---------------------------------------------------------------------------
 
 
+async def _limited_generate_report(report_id: UUID, db_factory: async_sessionmaker) -> None:
+    """Acquire the report semaphore slot, generate the report, then release it.
+
+    Wrapping :func:`generate_report_for_scan` in this coroutine means that at
+    most :attr:`~backend.config.Settings.MAX_CONCURRENT_REPORTS` report
+    generation jobs execute simultaneously.  Excess tasks block inside
+    ``async with`` until a slot is freed rather than being rejected outright.
+
+    Args:
+        report_id:  UUID of the report to generate.
+        db_factory: Session factory forwarded to :func:`generate_report_for_scan`.
+    """
+    async with get_report_semaphore():
+        await generate_report_for_scan(report_id=report_id, db_factory=db_factory)
+
+
 def trigger_report_generation(report_id: UUID) -> None:
     """Schedule :func:`generate_report_for_scan` as a fire-and-forget task.
 
@@ -387,6 +404,10 @@ def trigger_report_generation(report_id: UUID) -> None:
     The :data:`~backend.database.AsyncSessionLocal` factory is imported lazily
     inside this function to avoid a circular-import at module load time.
 
+    Concurrency is bounded by the semaphore inside :func:`_limited_generate_report`:
+    at most :attr:`~backend.config.Settings.MAX_CONCURRENT_REPORTS` reports
+    generate simultaneously; additional tasks queue and start as slots become free.
+
     Args:
         report_id: UUID of the :class:`~backend.models.report.Report` row for
                    which generation should be triggered.
@@ -394,7 +415,7 @@ def trigger_report_generation(report_id: UUID) -> None:
     from backend.database import AsyncSessionLocal  # local import — avoids circular
 
     asyncio.create_task(
-        generate_report_for_scan(
+        _limited_generate_report(
             report_id=report_id,
             db_factory=AsyncSessionLocal,
         )

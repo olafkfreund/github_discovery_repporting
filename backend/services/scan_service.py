@@ -15,6 +15,7 @@ from backend.models.finding import Finding, ScanScore
 from backend.models.scan import Scan, ScanRepo
 from backend.providers.factory import create_provider
 from backend.scanners.orchestrator import ScanOrchestrator
+from backend.services.task_limiter import get_scan_semaphore
 
 logger = logging.getLogger(__name__)
 
@@ -264,13 +265,33 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
         await session.commit()
 
 
+async def _limited_run_scan(scan_id: UUID, db_factory: async_sessionmaker) -> None:
+    """Acquire the scan semaphore slot, run the scan, then release the slot.
+
+    Wrapping :func:`run_scan` in this coroutine means that at most
+    :attr:`~backend.config.Settings.MAX_CONCURRENT_SCANS` scans execute
+    simultaneously.  Excess tasks block inside ``async with`` until a slot is
+    freed rather than being rejected outright.
+
+    Args:
+        scan_id:    Primary key of the scan to execute.
+        db_factory: Session factory forwarded to :func:`run_scan`.
+    """
+    async with get_scan_semaphore():
+        await run_scan(scan_id, db_factory)
+
+
 def trigger_scan_background(scan_id: UUID) -> asyncio.Task:
     """Schedule :func:`run_scan` as a non-blocking asyncio background task.
 
     Retrieves the shared :data:`~backend.database.AsyncSessionLocal` factory
-    from the database module and wraps :func:`run_scan` in an
+    from the database module and wraps :func:`_limited_run_scan` in an
     :func:`asyncio.create_task` call so the scan executes concurrently with
     the HTTP response being returned to the caller.
+
+    Concurrency is bounded by the semaphore inside :func:`_limited_run_scan`:
+    at most :attr:`~backend.config.Settings.MAX_CONCURRENT_SCANS` scans run
+    simultaneously; additional tasks queue and start as slots become free.
 
     Args:
         scan_id: Primary key of the scan to run in the background.
@@ -281,4 +302,4 @@ def trigger_scan_background(scan_id: UUID) -> asyncio.Task:
     from backend.database import AsyncSessionLocal  # noqa: PLC0415 — avoid import cycle
 
     logger.info("trigger_scan_background: scheduling scan %s.", scan_id)
-    return asyncio.create_task(run_scan(scan_id, AsyncSessionLocal))
+    return asyncio.create_task(_limited_run_scan(scan_id, AsyncSessionLocal))
