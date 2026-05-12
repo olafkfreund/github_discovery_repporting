@@ -146,14 +146,8 @@ class TestStubsRaiseNotImplementedError:
     that still raise.
     """
 
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("method_name", _WRITE_METHODS)
-    async def test_azure_stubs_raise(
-        self, method_name: str, azure_provider: AzureDevOpsProvider
-    ) -> None:
-        method = getattr(azure_provider, method_name)
-        with pytest.raises(NotImplementedError, match="issue #16"):
-            await _call_stub(method, method_name)
+    # NOTE: AzureDevOpsProvider write methods are fully implemented (issue #16).
+    # The azure stubs test has been removed — see tests/test_providers/test_azure_devops_write.py.
 
 
 # ---------------------------------------------------------------------------

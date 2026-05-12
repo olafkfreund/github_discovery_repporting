@@ -11,6 +11,7 @@ import httpx
 import yaml
 
 from backend.models.enums import Platform
+from backend.providers.base import ProviderWriteError
 from backend.schemas.platform_data import (
     BranchProtection,
     BranchProtectionRules,
@@ -275,6 +276,83 @@ class AzureDevOpsProvider:
         resp = await self._client.get(url, params=merged_params)
         resp.raise_for_status()
         return resp.json(), resp.headers
+
+    async def _post(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | list[Any] | None = None,
+        api_version: str = "7.0",
+    ) -> dict[str, Any] | list[Any]:
+        """POST to the Azure DevOps REST API and return the parsed JSON response.
+
+        Args:
+            path: Absolute URL (including base) for the request.
+            json: Request body to serialise as JSON.
+            api_version: Azure DevOps API version string.
+
+        Returns:
+            Parsed JSON response body, or an empty dict when the response has
+            no content (HTTP 204).
+
+        Raises:
+            ProviderWriteError: on any 4xx/5xx response.
+        """
+        resp = await self._client.post(path, json=json, params={"api-version": api_version})
+        if resp.status_code >= 400:
+            raise ProviderWriteError(
+                f"Azure DevOps POST {path} failed: {resp.status_code} {resp.text[:500]}"
+            )
+        return resp.json() if resp.content else {}  # type: ignore[return-value]
+
+    async def _put(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | list[Any] | None = None,
+        api_version: str = "7.0",
+    ) -> dict[str, Any] | list[Any]:
+        """PUT to the Azure DevOps REST API and return the parsed JSON response.
+
+        Args:
+            path: Absolute URL (including base) for the request.
+            json: Request body to serialise as JSON.
+            api_version: Azure DevOps API version string.
+
+        Returns:
+            Parsed JSON response body, or an empty dict when the response has
+            no content (HTTP 204).
+
+        Raises:
+            ProviderWriteError: on any 4xx/5xx response.
+        """
+        resp = await self._client.put(path, json=json, params={"api-version": api_version})
+        if resp.status_code >= 400:
+            raise ProviderWriteError(
+                f"Azure DevOps PUT {path} failed: {resp.status_code} {resp.text[:500]}"
+            )
+        return resp.json() if resp.content else {}  # type: ignore[return-value]
+
+    async def _delete(
+        self,
+        path: str,
+        *,
+        api_version: str = "7.0",
+    ) -> None:
+        """DELETE a resource via the Azure DevOps REST API.
+
+        Args:
+            path: Absolute URL (including base) for the request.
+            api_version: Azure DevOps API version string.
+
+        Raises:
+            ProviderWriteError: on any 4xx/5xx response.
+        """
+        resp = await self._client.delete(path, params={"api-version": api_version})
+        if resp.status_code >= 400:
+            raise ProviderWriteError(
+                f"Azure DevOps DELETE {path} failed: {resp.status_code} {resp.text[:500]}"
+            )
 
     @staticmethod
     def _parse_external_id(external_id: str) -> tuple[str, str]:
@@ -991,7 +1069,7 @@ class AzureDevOpsProvider:
         return prs
 
     # ---------------------------------------------------------------------------
-    # Write operations (Phase 2 — stubs, see follow-up issue #16)
+    # Write operations (issue #16)
     # ---------------------------------------------------------------------------
 
     async def create_branch(
@@ -1000,10 +1078,40 @@ class AzureDevOpsProvider:
         branch: str,
         from_sha: str,
     ) -> None:
-        """Create a branch — TO BE IMPLEMENTED in issue #16."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.create_branch is not yet implemented (issue #16)"
-        )
+        """Create a new branch at the given commit SHA via the Azure DevOps refs API.
+
+        Endpoint: ``POST /{project}/_apis/git/repositories/{repoId}/refs``
+
+        Args:
+            repo: Target repository (``external_id`` must encode
+                ``"project:repo_guid"``).
+            branch: Short branch name (without ``refs/heads/`` prefix).
+            from_sha: The 40-character commit SHA to branch from.
+
+        Raises:
+            ProviderWriteError: If the branch already exists, the SHA is
+                unknown, or the API returns an error.
+        """
+        raw_project, repo_id = self._parse_external_id(repo.external_id)
+        project = self._quote_path(raw_project)
+
+        url = f"{self._base_url}/{project}/_apis/git/repositories/{repo_id}/refs"
+        payload: list[dict[str, Any]] = [
+            {
+                "name": f"refs/heads/{branch}",
+                "newObjectId": from_sha,
+                "oldObjectId": "0000000000000000000000000000000000000000",
+            }
+        ]
+
+        response = await self._post(url, json=payload)
+
+        # Azure returns {"value": [{"success": bool, ...}]} on 200.
+        if isinstance(response, dict):
+            value = response.get("value", [])
+            if value and not value[0].get("success", True):
+                msg = value[0].get("customMessage") or f"Failed to create branch '{branch}'."
+                raise ProviderWriteError(msg)
 
     async def commit_files(
         self,
@@ -1014,10 +1122,80 @@ class AzureDevOpsProvider:
         author_name: str | None = None,
         author_email: str | None = None,
     ) -> str:
-        """Commit files — TO BE IMPLEMENTED in issue #16."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.commit_files is not yet implemented (issue #16)"
-        )
+        """Commit a set of file changes atomically via the Azure DevOps pushes API.
+
+        Endpoint: ``POST /{project}/_apis/git/repositories/{repoId}/pushes``
+
+        Args:
+            repo: Target repository.
+            branch: Existing branch to commit to.
+            files: One or more :class:`~backend.schemas.platform_data.FileChange`
+                entries.  ``content`` must be set for ``create``/``update``
+                actions.
+            message: Commit message.
+            author_name: Ignored — Azure DevOps uses the PAT principal for
+                authorship.  A warning is logged when provided.
+            author_email: Ignored for the same reason.
+
+        Returns:
+            The 40-character SHA of the newly created commit.
+
+        Raises:
+            ProviderWriteError: When ``files`` is empty, required content is
+                missing, the branch does not exist, or the API returns an error.
+        """
+        if not files:
+            raise ProviderWriteError("No file changes provided.")
+
+        if author_name or author_email:
+            logger.warning(
+                "AzureDevOpsProvider.commit_files: author_name/author_email are "
+                "not supported by the Azure DevOps pushes API — the PAT principal "
+                "is used as the commit author instead."
+            )
+
+        raw_project, repo_id = self._parse_external_id(repo.external_id)
+        project = self._quote_path(raw_project)
+
+        # Resolve current branch tip SHA
+        refs_url = f"{self._base_url}/{project}/_apis/git/repositories/{repo_id}/refs"
+        refs_data = await self._get(refs_url, params={"filter": f"heads/{branch}"})
+        ref_values: list[dict[str, Any]] = refs_data.get("value", [])
+        if not ref_values:
+            raise ProviderWriteError(f"Branch '{branch}' not found in repository '{repo.name}'.")
+        current_tip_sha: str = ref_values[0]["objectId"]
+
+        # Build the change list
+        _action_map = {"create": "add", "update": "edit", "delete": "delete"}
+        changes: list[dict[str, Any]] = []
+        for f in files:
+            azure_action = _action_map[f.action]
+            change: dict[str, Any] = {
+                "changeType": azure_action,
+                "item": {"path": "/" + f.path.lstrip("/")},
+            }
+            if f.action in {"create", "update"}:
+                if f.content is None:
+                    raise ProviderWriteError(
+                        f"File '{f.path}' has action '{f.action}' but content is None."
+                    )
+                change["newContent"] = {"content": f.content, "contentType": "rawtext"}
+            changes.append(change)
+
+        push_url = f"{self._base_url}/{project}/_apis/git/repositories/{repo_id}/pushes"
+        payload: dict[str, Any] = {
+            "refUpdates": [{"name": f"refs/heads/{branch}", "oldObjectId": current_tip_sha}],
+            "commits": [
+                {
+                    "comment": message,
+                    "changes": changes,
+                }
+            ],
+        }
+
+        response = await self._post(push_url, json=payload)
+        commits = response.get("commits", []) if isinstance(response, dict) else []  # type: ignore[union-attr]
+        return str(commits[0]["commitId"])
 
     async def create_pull_request(
         self,
@@ -1028,9 +1206,53 @@ class AzureDevOpsProvider:
         body: str,
         draft: bool = True,
     ) -> PullRequestRef:
-        """Open a PR — TO BE IMPLEMENTED in issue #16."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.create_pull_request is not yet implemented (issue #16)"
+        """Open a pull request via the Azure DevOps pull requests API.
+
+        Endpoint: ``POST /{project}/_apis/git/repositories/{repoId}/pullrequests``
+
+        Args:
+            repo: Target repository.
+            head: Source branch name (short, no ``refs/heads/`` prefix).
+            base: Target branch name.
+            title: PR title.
+            body: PR description.
+            draft: Whether to open as a draft (default ``True``).
+
+        Returns:
+            A :class:`~backend.schemas.platform_data.PullRequestRef` with the
+            new PR's metadata.
+
+        Raises:
+            ProviderWriteError: on any API-side failure.
+        """
+        raw_project, repo_id = self._parse_external_id(repo.external_id)
+        project = self._quote_path(raw_project)
+
+        url = f"{self._base_url}/{project}/_apis/git/repositories/{repo_id}/pullrequests"
+        payload: dict[str, Any] = {
+            "sourceRefName": f"refs/heads/{head}",
+            "targetRefName": f"refs/heads/{base}",
+            "title": title,
+            "description": body,
+            "isDraft": draft,
+        }
+
+        response = await self._post(url, json=payload)
+        resp = response if isinstance(response, dict) else {}  # type: ignore[assignment]
+
+        pr_id: int = resp["pullRequestId"]
+        web_url: str = resp["repository"]["webUrl"]
+        pr_url = f"{web_url}/pullrequest/{pr_id}"
+
+        return PullRequestRef(
+            provider=Platform.azure_devops,
+            repo_external_id=repo.external_id,
+            pr_number=pr_id,
+            pr_url=pr_url,
+            head_branch=head,
+            base_branch=base,
+            title=title,
+            is_draft=draft,
         )
 
     async def get_pr_status(
@@ -1038,9 +1260,84 @@ class AzureDevOpsProvider:
         repo: NormalizedRepo,
         pr_number: int,
     ) -> PRStatus:
-        """Fetch PR status — TO BE IMPLEMENTED in issue #16."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.get_pr_status is not yet implemented (issue #16)"
+        """Fetch the current status of a pull request.
+
+        Endpoint:
+            ``GET /{project}/_apis/git/repositories/{repoId}/pullrequests/{pr_number}``
+
+        Azure DevOps ``status`` → normalised state mapping:
+
+        * ``"active"`` → ``"open"``
+        * ``"abandoned"`` → ``"closed"``
+        * ``"completed"`` → ``"merged"``
+
+        ``mergeStatus`` → ``mergeable``:
+
+        * ``"succeeded"`` → ``True``
+        * ``"conflicts"`` / ``"rejectedByPolicy"`` → ``False``
+        * all others (``"queued"``, ``"notSet"``, ``"failure"``) → ``None``
+
+        Args:
+            repo: Repository that owns the PR.
+            pr_number: The Azure DevOps pull request ID.
+
+        Returns:
+            A :class:`~backend.schemas.platform_data.PRStatus` snapshot.
+
+        Raises:
+            ProviderWriteError: If the PR cannot be found or the API returns
+                an error.
+        """
+        raw_project, repo_id = self._parse_external_id(repo.external_id)
+        project = self._quote_path(raw_project)
+
+        url = (
+            f"{self._base_url}/{project}/_apis/git/repositories/{repo_id}/pullrequests/{pr_number}"
+        )
+        try:
+            resp = await self._get(url)
+        except httpx.HTTPStatusError as exc:
+            raise ProviderWriteError(
+                f"PR #{pr_number} not found or inaccessible: HTTP {exc.response.status_code}"
+            ) from exc
+
+        # State mapping
+        azure_status = resp.get("status", "")
+        _state_map: dict[str, str] = {
+            "active": "open",
+            "abandoned": "closed",
+            "completed": "merged",
+        }
+        state = _state_map.get(azure_status, "open")
+
+        # Mergeability
+        merge_status = resp.get("mergeStatus", "")
+        if merge_status == "succeeded":
+            mergeable: bool | None = True
+        elif merge_status in {"conflicts", "rejectedByPolicy"}:
+            mergeable = False
+        else:
+            mergeable = None
+
+        # merged_at — only set when the PR is completed
+        merged_at: datetime | None = None
+        if state == "merged":
+            merged_at = _parse_datetime(resp.get("closedDate"))
+
+        head_sha: str = resp["lastMergeSourceCommit"]["commitId"]
+        head_branch = resp["sourceRefName"].removeprefix("refs/heads/")
+        base_branch = resp["targetRefName"].removeprefix("refs/heads/")
+        is_draft: bool = resp.get("isDraft", False)
+
+        return PRStatus(
+            pr_number=pr_number,
+            state=state,  # type: ignore[arg-type]
+            is_draft=is_draft,
+            head_sha=head_sha,
+            head_branch=head_branch,
+            base_branch=base_branch,
+            mergeable=mergeable,
+            merged_at=merged_at,
         )
 
     async def set_branch_protection(
@@ -1049,10 +1346,124 @@ class AzureDevOpsProvider:
         branch: str,
         rules: BranchProtectionRules,
     ) -> None:
-        """Apply branch protection — TO BE IMPLEMENTED in issue #16."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.set_branch_protection is not yet implemented (issue #16)"
-        )
+        """Apply branch-protection rules via Azure DevOps policy configurations.
+
+        Azure DevOps uses *policy configurations* rather than a single
+        branch-protection endpoint.  This method manages two policy types:
+
+        **Minimum number of reviewers** (when
+        ``rules.require_pull_request_review`` is ``True``):
+            Existing reviewer-count policies scoped to the branch are replaced
+            with a new configuration using
+            ``rules.required_reviewer_count``.
+
+        **Required status checks** (``rules.require_status_checks``):
+            One policy per status name is created.  Existing policies with
+            matching display names are removed first.  When the list is empty
+            nothing is created.
+
+        **Out-of-scope fields** (not mapped — Phase 5 hardening):
+
+        * ``enforce_admins``, ``allow_force_pushes``, ``allow_deletions``,
+          ``restrict_push_users`` — controlled via repository ACLs and
+          security descriptors, not policy configurations.
+        * ``require_codeowner_review`` — has no direct Azure equivalent; the
+          closest is a *path-based reviewer* policy that requires explicit
+          reviewer lists.
+
+        Policy type GUIDs:
+
+        * ``fa4e907d-c16b-4a4c-9dfa-4906e5d171dd`` — Minimum number of reviewers
+        * ``0609b952-1397-4640-95ec-e00a01b2c241`` — Required status checks
+
+        Args:
+            repo: Target repository.
+            branch: Branch name to protect (short, no ``refs/heads/`` prefix).
+            rules: Desired protection rules.
+
+        Raises:
+            ProviderWriteError: on any API-side failure.
+        """
+        raw_project, repo_id = self._parse_external_id(repo.external_id)
+        project = self._quote_path(raw_project)
+
+        reviewer_policy_type = "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd"
+        status_policy_type = "0609b952-1397-4640-95ec-e00a01b2c241"
+        ref_name = f"refs/heads/{branch}"
+
+        policy_base = f"{self._base_url}/{project}/_apis/policy/configurations"
+
+        # ------------------------------------------------------------------
+        # Helper: list existing policies of a given type scoped to this branch
+        # ------------------------------------------------------------------
+        async def _list_branch_policies(policy_type: str) -> list[dict[str, Any]]:
+            data = await self._get(policy_base, params={"policyType": policy_type})
+            result: list[dict[str, Any]] = []
+            for cfg in data.get("value", []):
+                scope: list[dict[str, Any]] = cfg.get("settings", {}).get("scope", [])
+                if any(s.get("refName") == ref_name for s in scope):
+                    result.append(cfg)
+            return result
+
+        # ------------------------------------------------------------------
+        # Minimum reviewer count
+        # ------------------------------------------------------------------
+        existing_reviewer_policies = await _list_branch_policies(reviewer_policy_type)
+        for cfg in existing_reviewer_policies:
+            cfg_id = cfg["id"]
+            await self._delete(f"{policy_base}/{cfg_id}")
+
+        if rules.require_pull_request_review:
+            reviewer_payload: dict[str, Any] = {
+                "type": {"id": reviewer_policy_type},
+                "isEnabled": True,
+                "isBlocking": True,
+                "settings": {
+                    "minimumApproverCount": rules.required_reviewer_count,
+                    "creatorVoteCounts": False,
+                    "allowDownvotes": False,
+                    "resetOnSourcePush": True,
+                    "requireVoteOnLastIteration": False,
+                    "scope": [
+                        {
+                            "refName": ref_name,
+                            "matchKind": "exact",
+                            "repositoryId": repo_id,
+                        }
+                    ],
+                },
+            }
+            await self._post(policy_base, json=reviewer_payload)
+
+        # ------------------------------------------------------------------
+        # Required status checks (one policy per status name)
+        # ------------------------------------------------------------------
+        if rules.require_status_checks:
+            for status_name in rules.require_status_checks:
+                # Remove existing policies with this display name on this branch
+                existing_status = await _list_branch_policies(status_policy_type)
+                for cfg in existing_status:
+                    if cfg.get("settings", {}).get("displayName") == status_name:
+                        cfg_id = cfg["id"]
+                        await self._delete(f"{policy_base}/{cfg_id}")
+
+                status_payload: dict[str, Any] = {
+                    "type": {"id": status_policy_type},
+                    "isEnabled": True,
+                    "isBlocking": True,
+                    "settings": {
+                        "buildDefinitionId": None,
+                        "displayName": status_name,
+                        "scope": [
+                            {
+                                "refName": ref_name,
+                                "matchKind": "exact",
+                                "repositoryId": repo_id,
+                            }
+                        ],
+                    },
+                }
+                await self._post(policy_base, json=status_payload)
 
 
 # ---------------------------------------------------------------------------
