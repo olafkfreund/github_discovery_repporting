@@ -6,12 +6,13 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import type { Skill, SkillFilters, SkillFilterType } from '../../types/skills'
-import type { CategoryRegistryInfo } from '../../types'
+import type { CategoryRegistryInfo, Connection } from '../../types'
 import { useSkills } from '../../hooks/useSkills'
 import { Spinner } from '../../components/ui/Spinner'
 import { ErrorPanel } from '../../components/ui/ErrorPanel'
 import { SkillsTable } from '../../components/settings/SkillsTable'
 import { SkillDrawer } from '../../components/settings/SkillDrawer'
+import { ConnectionSkillsOverride } from '../../components/settings/ConnectionSkillsOverride'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -135,18 +136,6 @@ function FilterRow({ filters, onChange, onNewClick, newButtonRef }: FilterRowPro
 }
 
 // ---------------------------------------------------------------------------
-// Per-connection placeholder (issue #41)
-// ---------------------------------------------------------------------------
-
-function PerConnectionPlaceholder() {
-  return (
-    <div className="border border-gray-200 rounded-lg p-4 text-sm text-gray-500">
-      Per-connection overrides — coming in issue #41.
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -164,6 +153,7 @@ export default function SkillsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
   const [allCheckIds, setAllCheckIds] = useState<string[]>([])
+  const [connections, setConnections] = useState<Connection[]>([])
 
   const newButtonRef = useRef<HTMLButtonElement | null>(null)
 
@@ -179,6 +169,17 @@ export default function SkillsPage() {
         // non-fatal — typeahead simply won't have suggestions
       })
   }, [])
+
+  // Load connections for per-connection override section
+  useEffect(() => {
+    if (!customerId) return
+    api
+      .listConnections(customerId)
+      .then(setConnections)
+      .catch(() => {
+        // non-fatal — section will show empty state
+      })
+  }, [customerId])
 
   const filtered = useMemo(
     () => filterSkills(skills, filters),
@@ -251,8 +252,32 @@ export default function SkillsPage() {
         />
       )}
 
-      {/* Per-connection placeholder (issue #41) */}
-      <PerConnectionPlaceholder />
+      {/* Per-connection skill overrides (issue #41) */}
+      <section className="mt-8">
+        <h3 className="text-lg font-semibold text-brand-800 mb-4">Per-connection overrides</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Connections inherit the customer-level skill enable/disable by default.
+          Add an override here to force a skill on or off for a specific connection.
+        </p>
+        {connections.length === 0 ? (
+          <p className="text-sm text-gray-500">This customer has no platform connections yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {connections.map((conn) => (
+              <ConnectionSkillsOverride
+                key={conn.id}
+                connection={conn}
+                skills={skills}
+                onSave={async (id, payload) => {
+                  const updated = await api.updateConnectionSkillsOverride(id, payload)
+                  setConnections((prev) => prev.map((c) => (c.id === id ? updated : c)))
+                  return updated
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Drawer */}
       {customerId && (

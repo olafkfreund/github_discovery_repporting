@@ -19,6 +19,7 @@ import type {
   SkillCreatePayload,
   SkillUpdatePayload,
   SkillsListResponse,
+  ConnectionSkillsOverridePayload,
 } from '../types/skills'
 import type {
   AgentInstructions,
@@ -274,6 +275,15 @@ export const api = {
 
   getSkillContent: (customerId: string, name: string): Promise<SkillContent> =>
     request<SkillContent>(`/skills/${name}/content?customer_id=${customerId}`),
+
+  updateConnectionSkillsOverride: (
+    connectionId: string,
+    payload: ConnectionSkillsOverridePayload,
+  ): Promise<Connection> =>
+    request<Connection>(`/connections/${connectionId}/skills-override`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
 
   // Agent Runs
   getRemediationPolicy: async (customerId: string): Promise<RemediationPolicy | null> => {
