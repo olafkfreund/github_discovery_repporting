@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend: lint, format check, and test the FastAPI application
+  # Uses uv for dependency management. Dev deps are declared under
+  # [project.optional-dependencies] dev in pyproject.toml, so --extra dev
+  # is required to pull in pytest, ruff, aiosqlite, etc.
+  # Tests use SQLite in-memory via aiosqlite — no PostgreSQL service needed.
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend (Python 3.12)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Pin the uv version so CI stays deterministic. Bump intentionally.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.5.x"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Cache the uv package download cache (separate from the venv).
+      # The cache key includes the lock file so it is invalidated on any
+      # dependency change.
+      - name: Cache uv package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      # Sync all runtime + dev dependencies from the lock file.
+      # --frozen ensures the lock file is not updated in CI.
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Lint with ruff
+        run: uv run ruff check backend/ tests/
+
+      - name: Check formatting with ruff
+        run: uv run ruff format --check backend/ tests/
+
+      # -q keeps output concise; pytest discovers tests from testpaths in
+      # pyproject.toml (asyncio_mode = "auto" is already configured there).
+      - name: Run tests
+        run: uv run python -m pytest tests/ -q
+
+  # ---------------------------------------------------------------------------
+  # Frontend: install npm dependencies and compile TypeScript via Vite build.
+  # package-lock.json is present, so npm ci is safe to use.
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend (Node.js 22)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        # All steps run inside the frontend/ subdirectory.
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          # Built-in npm cache support — caches ~/.npm keyed on package-lock.json.
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      # ci does a clean install from the lock file, ensuring reproducibility.
+      - name: Install dependencies
+        run: npm ci
+
+      # Vite build invokes tsc for type checking before bundling, so this
+      # acts as a TypeScript compile check without a separate tsc step.
+      - name: Build (TypeScript compile check)
+        run: npm run build
