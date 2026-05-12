@@ -36,21 +36,18 @@ class TestRecipeSuccessCheckImportMissing:
     async def test_missing_parent_package_raises_tool_error(
         self, tool: RecipeSuccessCheck, workspace: WorkspaceContext
     ) -> None:
-        """Verify the ImportError path is triggered when the module is absent."""
-        saved = sys.modules.pop("backend.remediation.registry", None)
-        saved_parent = sys.modules.pop("backend.remediation", None)
-        try:
+        """Verify the ImportError path via None sentinel in sys.modules."""
+        # Setting a module to None in sys.modules causes ImportError on import.
+        with patch.dict(
+            sys.modules,
+            {"backend.remediation.registry": None, "backend.remediation": None},
+        ):
             with pytest.raises(ToolError, match="remediation registry not yet wired"):
                 await tool(
                     {"check_id": "REPO-001"},
                     workspace=workspace,
                     provider=None,
                 )
-        finally:
-            if saved is not None:
-                sys.modules["backend.remediation.registry"] = saved
-            if saved_parent is not None:
-                sys.modules["backend.remediation"] = saved_parent
 
 
 class TestRecipeSuccessCheckWhenWired:
