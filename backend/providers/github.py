@@ -11,6 +11,7 @@ from github import Auth, Github, GithubException
 from github.Repository import Repository as GithubRepo
 
 from backend.models.enums import Platform
+from backend.providers.base import validate_base_url
 from backend.schemas.platform_data import (
     BranchProtection,
     CIWorkflow,
@@ -175,6 +176,12 @@ class GitHubProvider:
 
     platform: Platform = Platform.github
 
+    # Default allowlist for GitHub hostnames (public cloud).
+    # Self-hosted GitHub Enterprise instances with custom domains are
+    # still permitted provided they use HTTPS and do not resolve to
+    # private/reserved IP addresses.
+    _ALLOWED_GITHUB_HOSTS: list[str] = ["github.com", "*.github.com"]
+
     def __init__(
         self,
         token: str,
@@ -183,6 +190,12 @@ class GitHubProvider:
     ) -> None:
         self._token = token
         self._org_name = org_name
+
+        # Validate base_url against SSRF before handing it to PyGithub.
+        # OWASP A10:2021 -- Server-Side Request Forgery
+        if base_url:
+            validate_base_url(base_url, allowed_hosts=self._ALLOWED_GITHUB_HOSTS)
+
         self._base_url = base_url
         auth = Auth.Token(token)
         self._client = Github(base_url=base_url, auth=auth) if base_url else Github(auth=auth)

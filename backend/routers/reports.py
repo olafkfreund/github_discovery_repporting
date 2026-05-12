@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import settings
 from backend.database import get_db
+from backend.models.enums import ScanStatus
 from backend.models.report import Report, ReportTemplate
 from backend.models.scan import Scan
 from backend.schemas.report import (
@@ -77,6 +78,54 @@ async def _get_template_or_404(db: AsyncSession, template_id: UUID) -> ReportTem
     return template
 
 
+def _resolve_report_path(stored_path: str, reports_dir: str) -> Path:
+    """Resolve a stored report path and verify it is within REPORTS_DIR.
+
+    Prevents path-traversal attacks where a malicious ``stored_path`` (e.g.
+    ``../../../etc/passwd``) could escape the intended reports directory.
+    Both relative and absolute stored paths are resolved and boundary-checked.
+
+    OWASP reference: A01:2021 - Broken Access Control (path traversal).
+
+    Args:
+        stored_path: The path value persisted in the database (may be
+            relative to *reports_dir* or absolute for legacy records).
+        reports_dir: The configured ``REPORTS_DIR`` base directory.
+
+    Returns:
+        The resolved :class:`~pathlib.Path` guaranteed to reside within
+        *reports_dir*.
+
+    Raises:
+        HTTPException: 404 if the resolved path escapes the reports
+            directory boundary or does not exist on disk.
+    """
+    base = Path(reports_dir).resolve()
+    stored = Path(stored_path)
+
+    if stored.is_absolute():
+        resolved = stored.resolve()
+    else:
+        resolved = (base / stored).resolve()
+
+    # Ensure the resolved path is within the reports directory.
+    # Using os.path.commonpath or str prefix check after resolve()
+    # guarantees symlinks and ".." segments are fully expanded.
+    if not str(resolved).startswith(str(base) + "/") and resolved != base:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report file not found.",
+        )
+
+    if not resolved.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report file not found on disk.",
+        )
+
+    return resolved
+
+
 # ---------------------------------------------------------------------------
 # Report endpoints
 # ---------------------------------------------------------------------------
@@ -110,6 +159,7 @@ async def create_report(
         The newly created report record with ``status="pending"``.
 
     Raises:
+        HTTPException: 400 if the scan has not completed.
         HTTPException: 404 if the scan or referenced template does not exist.
     """
     # Verify the scan exists.
@@ -119,6 +169,16 @@ async def create_report(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Scan {scan_id} not found.",
+        )
+
+    # Reject report generation for scans that have not yet completed.
+    if scan.status != ScanStatus.completed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Cannot generate report: scan status is '{scan.status.value}',"
+                " expected 'completed'."
+            ),
         )
 
     # Verify the template if one was supplied.
@@ -194,22 +254,7 @@ async def download_report(
             detail=f"Report {report_id} has no PDF available yet.",
         )
 
-    # The stored pdf_path is relative to REPORTS_DIR. Reconstruct the
-    # absolute path; fall back to treating it as-is for legacy records
-    # that may have stored an absolute path.
-    stored = Path(report.pdf_path)
-    if stored.is_absolute():
-        pdf_path = stored
-    else:
-        pdf_path = Path(settings.REPORTS_DIR).resolve() / stored
-
-    if not pdf_path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"PDF file for report {report_id} was recorded but is missing from the filesystem."
-            ),
-        )
+    pdf_path = _resolve_report_path(report.pdf_path, settings.REPORTS_DIR)
 
     return FileResponse(
         path=str(pdf_path),
@@ -235,20 +280,7 @@ async def download_report_excel(
             detail=f"Report {report_id} has no Excel file available yet.",
         )
 
-    stored = Path(report.excel_path)
-    if stored.is_absolute():
-        excel_path = stored
-    else:
-        excel_path = Path(settings.REPORTS_DIR).resolve() / stored
-
-    if not excel_path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"Excel file for report {report_id} was recorded but is missing "
-                "from the filesystem."
-            ),
-        )
+    excel_path = _resolve_report_path(report.excel_path, settings.REPORTS_DIR)
 
     return FileResponse(
         path=str(excel_path),
@@ -274,19 +306,7 @@ async def download_report_zip(
             detail=f"Report {report_id} has no zip bundle available yet.",
         )
 
-    stored = Path(report.zip_path)
-    if stored.is_absolute():
-        zip_path = stored
-    else:
-        zip_path = Path(settings.REPORTS_DIR).resolve() / stored
-
-    if not zip_path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"Zip file for report {report_id} was recorded but is missing from the filesystem."
-            ),
-        )
+    zip_path = _resolve_report_path(report.zip_path, settings.REPORTS_DIR)
 
     return FileResponse(
         path=str(zip_path),

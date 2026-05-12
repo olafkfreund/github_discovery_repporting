@@ -72,10 +72,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # CORS: restrict allowed origins to an explicit allowlist.
+    # OWASP A05:2021 — wildcard origins expose the API to cross-origin
+    # requests from any domain.  CORS_ORIGINS is a comma-separated env var.
+    allowed_origins = [
+        origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=allowed_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )

@@ -6,12 +6,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from environment variables or .env file."""
 
-    DATABASE_URL: str = (
-        "postgresql+asyncpg://devops:devops@localhost:5432/devops_discovery"
-    )
+    DATABASE_URL: str = "postgresql+asyncpg://devops:devops@localhost:5432/devops_discovery"
     ANTHROPIC_API_KEY: str = ""
     CREDENTIALS_ENCRYPTION_KEY: str = ""
     REPORTS_DIR: str = "./reports"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 

@@ -11,6 +11,7 @@ import yaml
 from gitlab.exceptions import GitlabError
 
 from backend.models.enums import Platform
+from backend.providers.base import validate_base_url
 from backend.schemas.platform_data import (
     BranchProtection,
     CIWorkflow,
@@ -50,6 +51,12 @@ class GitLabProvider:
 
     platform: Platform = Platform.gitlab
 
+    # Default allowlist for GitLab hostnames (public cloud).
+    # Self-hosted GitLab instances with custom domains are still
+    # permitted provided they use HTTPS and do not resolve to
+    # private/reserved IP addresses.
+    _ALLOWED_GITLAB_HOSTS: list[str] = ["gitlab.com", "*.gitlab.com"]
+
     def __init__(
         self,
         token: str,
@@ -58,7 +65,15 @@ class GitLabProvider:
     ) -> None:
         self._token = token
         self._group = group
-        self._base_url = base_url or "https://gitlab.com"
+
+        # Validate base_url against SSRF before handing it to python-gitlab.
+        # The default (https://gitlab.com) is on the allowlist and passes
+        # validation without DNS resolution.
+        # OWASP A10:2021 -- Server-Side Request Forgery
+        resolved_url = base_url or "https://gitlab.com"
+        validate_base_url(resolved_url, allowed_hosts=self._ALLOWED_GITLAB_HOSTS)
+
+        self._base_url = resolved_url
         self._client = gitlab.Gitlab(
             url=self._base_url,
             private_token=token,
@@ -95,10 +110,7 @@ class GitLabProvider:
             for g in results:
                 path = getattr(g, "full_path", "") or ""
                 name = getattr(g, "name", "") or ""
-                if (
-                    path.lower() == self._group.lower()
-                    or name.lower() == self._group.lower()
-                ):
+                if path.lower() == self._group.lower() or name.lower() == self._group.lower():
                     logger.info(
                         "Resolved group %r via search → full_path=%r (id=%s)",
                         self._group,
@@ -183,16 +195,16 @@ class GitLabProvider:
                 all_members = group.members.list(all=True)
                 members.total_members = len(all_members)
                 # GitLab access levels: 50 = Owner, 40 = Maintainer
-                members.admin_count = sum(
-                    1 for m in all_members if m.access_level >= 40
-                )
+                members.admin_count = sum(1 for m in all_members if m.access_level >= 40)
             except GitlabError as exc:
                 logger.debug("Could not fetch member counts for %s: %s", self._group, exc)
 
             # GitLab enforces 2FA at instance level, not group level typically
             # Check if group has any 2FA-related settings
             try:
-                members.mfa_enforced = bool(getattr(group, "require_two_factor_authentication", False))
+                members.mfa_enforced = bool(
+                    getattr(group, "require_two_factor_authentication", False)
+                )
             except (GitlabError, AttributeError):
                 pass
 
@@ -209,9 +221,7 @@ class GitLabProvider:
                     getattr(group, "require_two_factor_authentication", False)
                 )
             except (GitlabError, AttributeError) as exc:
-                logger.debug(
-                    "Could not fetch group security settings for %s: %s", self._group, exc
-                )
+                logger.debug("Could not fetch group security settings for %s: %s", self._group, exc)
 
             # Security policy — check for SECURITY.md in group
             has_security_policy = False
@@ -220,7 +230,10 @@ class GitLabProvider:
                 for p in projects:
                     try:
                         full_p = self._client.projects.get(p.id)
-                        full_p.files.get(file_path="SECURITY.md", ref=getattr(full_p, "default_branch", "main") or "main")
+                        full_p.files.get(
+                            file_path="SECURITY.md",
+                            ref=getattr(full_p, "default_branch", "main") or "main",
+                        )
                         has_security_policy = True
                         break
                     except GitlabError:
@@ -260,7 +273,9 @@ def _normalize_project(project: Any) -> NormalizedRepo:
     """Convert a python-gitlab Project object to a NormalizedRepo."""
     return NormalizedRepo(
         external_id=str(project.id),
-        name=project.path_with_namespace.split("/")[-1] if "/" in project.path_with_namespace else project.path_with_namespace,
+        name=project.path_with_namespace.split("/")[-1]
+        if "/" in project.path_with_namespace
+        else project.path_with_namespace,
         url=project.web_url,
         default_branch=_default_branch(project),
         is_private=project.visibility == "private",
@@ -326,9 +341,13 @@ def _fetch_branch_protection(project: Any, default_branch: str) -> BranchProtect
             allow_force_pushes = bool(getattr(protection_rules, "allow_force_push", False))
 
             # Code owners
-            require_code_owner = bool(getattr(protection_rules, "code_owner_approval_required", False))
+            require_code_owner = bool(
+                getattr(protection_rules, "code_owner_approval_required", False)
+            )
         except GitlabError as exc:
-            logger.debug("Could not fetch protection details for %s: %s", project.path_with_namespace, exc)
+            logger.debug(
+                "Could not fetch protection details for %s: %s", project.path_with_namespace, exc
+            )
 
         # Check approval rules for required reviews count
         try:
@@ -386,10 +405,21 @@ def _fetch_ci_config(project: Any) -> list[CIWorkflow]:
 
     # GitLab CI has stages and jobs at the top level
     # Each job (non-keyword key) becomes a CIWorkflow
-    reserved_keys = frozenset({
-        "stages", "variables", "image", "services", "before_script",
-        "after_script", "cache", "include", "default", "workflow", "pages",
-    })
+    reserved_keys = frozenset(
+        {
+            "stages",
+            "variables",
+            "image",
+            "services",
+            "before_script",
+            "after_script",
+            "cache",
+            "include",
+            "default",
+            "workflow",
+            "pages",
+        }
+    )
 
     full_text = raw_yaml.lower()
 
@@ -546,35 +576,81 @@ def _fetch_file_flags(project: Any) -> dict[str, bool]:
             ".gitlab/merge_request_templates/default.md",
             ".gitlab/merge_request_templates/Default.md",
         ],
-        "has_contributing_guide": ["CONTRIBUTING.md", ".gitlab/CONTRIBUTING.md", "docs/CONTRIBUTING.md"],
+        "has_contributing_guide": [
+            "CONTRIBUTING.md",
+            ".gitlab/CONTRIBUTING.md",
+            "docs/CONTRIBUTING.md",
+        ],
         "has_license": ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md"],
         "has_readme": ["README.md", "README.rst", "README.txt", "README"],
         "has_sbom": ["sbom.json", "sbom.spdx", "sbom.cyclonedx.json", "bom.json", "bom.xml"],
         "has_dockerfile": ["Dockerfile", "dockerfile", "docker/Dockerfile"],
-        "has_docker_compose": ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"],
+        "has_docker_compose": [
+            "docker-compose.yml",
+            "docker-compose.yaml",
+            "compose.yml",
+            "compose.yaml",
+        ],
         "has_container_scanning": [".trivy.yaml", ".grype.yaml"],
-        "has_iac_files": ["main.tf", "terraform/main.tf", "Pulumi.yaml", "pulumi/Pulumi.yaml", "infrastructure/main.tf"],
-        "has_monitoring_config": ["prometheus.yml", "monitoring/prometheus.yml", "datadog.yaml", ".datadog-ci.json"],
+        "has_iac_files": [
+            "main.tf",
+            "terraform/main.tf",
+            "Pulumi.yaml",
+            "pulumi/Pulumi.yaml",
+            "infrastructure/main.tf",
+        ],
+        "has_monitoring_config": [
+            "prometheus.yml",
+            "monitoring/prometheus.yml",
+            "datadog.yaml",
+            ".datadog-ci.json",
+        ],
         "has_backup_config": ["backup.yml", "backup.yaml", "docs/backup-strategy.md"],
         "has_changelog": ["CHANGELOG.md", "CHANGES.md", "HISTORY.md"],
         "has_adr_directory": ["docs/adr", "adr", "docs/architecture/decisions"],
         "has_sast_config": [".semgrep.yml", ".semgrep.yaml", ".semgrep"],
         "has_dast_config": [".zap/rules.tsv", "dast-config.yml", ".dast.yml"],
-        "has_api_docs": ["openapi.yaml", "openapi.json", "swagger.yaml", "swagger.json", "docs/api"],
+        "has_api_docs": [
+            "openapi.yaml",
+            "openapi.json",
+            "swagger.yaml",
+            "swagger.json",
+            "docs/api",
+        ],
         "has_runbook": ["runbook.md", "docs/runbook.md", "RUNBOOK.md"],
         "has_sla_document": ["SLA.md", "docs/SLA.md", "docs/sla.md"],
         "has_migration_guide": ["MIGRATION.md", "docs/migration.md", "docs/MIGRATION.md"],
         "has_deprecation_policy": ["DEPRECATION.md", "docs/deprecation.md", "docs/DEPRECATION.md"],
         "has_issue_templates": [".gitlab/issue_templates"],
-        "has_branching_strategy_doc": ["docs/branching-strategy.md", "docs/git-workflow.md", "BRANCHING.md"],
+        "has_branching_strategy_doc": [
+            "docs/branching-strategy.md",
+            "docs/git-workflow.md",
+            "BRANCHING.md",
+        ],
         "has_release_process_doc": ["docs/release-process.md", "RELEASING.md", "docs/RELEASING.md"],
         "has_hotfix_process_doc": ["docs/hotfix-process.md", "docs/HOTFIX.md"],
         "has_definition_of_done": ["docs/definition-of-done.md", "docs/DOD.md"],
-        "has_feature_flags": [".featureflags.yml", "feature-flags.json", "flagsmith.json", "launchdarkly.yml"],
+        "has_feature_flags": [
+            ".featureflags.yml",
+            "feature-flags.json",
+            "flagsmith.json",
+            "launchdarkly.yml",
+        ],
         "has_editorconfig": [".editorconfig", ".prettierrc", ".prettierrc.json", ".prettierrc.yml"],
-        "has_type_checking": ["mypy.ini", ".mypy.ini", "pyproject.toml", "tsconfig.json", "pyrightconfig.json"],
+        "has_type_checking": [
+            "mypy.ini",
+            ".mypy.ini",
+            "pyproject.toml",
+            "tsconfig.json",
+            "pyrightconfig.json",
+        ],
         "has_dr_runbook": ["docs/disaster-recovery.md", "docs/DR.md", "DR-RUNBOOK.md"],
-        "has_incident_response_playbook": ["docs/incident-response.md", "docs/INCIDENT.md", "INCIDENT-RESPONSE.md", "playbooks/incident.md"],
+        "has_incident_response_playbook": [
+            "docs/incident-response.md",
+            "docs/INCIDENT.md",
+            "INCIDENT-RESPONSE.md",
+            "playbooks/incident.md",
+        ],
         "has_on_call_doc": ["docs/on-call.md", "docs/oncall.md", "ON-CALL.md"],
         "has_dashboards_as_code": ["grafana/dashboards", "dashboards/", "monitoring/dashboards"],
     }

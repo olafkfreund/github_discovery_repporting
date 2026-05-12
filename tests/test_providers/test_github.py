@@ -206,12 +206,21 @@ def test_provider_uses_public_github_without_base_url() -> None:
 
 
 def test_provider_uses_enterprise_url_when_supplied() -> None:
-    """GitHubProvider with base_url creates a client targeting that URL."""
-    prov = GitHubProvider(
-        token="tok",
-        org_name="my-org",
-        base_url="https://github.example.com/api/v3",
-    )
+    """GitHubProvider with base_url creates a client targeting that URL.
+
+    The fictional hostname is not resolvable, so we patch the SSRF
+    validation to allow the test to focus on verifying that base_url is
+    stored and forwarded to PyGithub.
+    """
+    with patch(
+        "backend.providers.github.validate_base_url",
+        return_value="https://github.example.com/api/v3",
+    ):
+        prov = GitHubProvider(
+            token="tok",
+            org_name="my-org",
+            base_url="https://github.example.com/api/v3",
+        )
     assert prov._base_url == "https://github.example.com/api/v3"
     assert prov._client is not None
 
