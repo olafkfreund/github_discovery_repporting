@@ -15,7 +15,9 @@ The effective-enabled precedence (per skill) is:
 """
 
 import hashlib
+import uuid as _uuid_module
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -24,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.customer import PlatformConnection
 from backend.models.skill import Skill, SkillToggle
+from backend.schemas.skill import SkillCreate, SkillRead, SkillUpdate
 from backend.skills import BuiltinSkill, get_skill_registry  # noqa: F401
 
 # ---------------------------------------------------------------------------
@@ -479,3 +482,233 @@ async def resolve_for_scan(
         result[cid].sort(key=lambda r: r.name)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Mutating helpers (create / update / delete / connection override)
+# ---------------------------------------------------------------------------
+
+
+async def create_skill(db: AsyncSession, customer_id: UUID, payload: SkillCreate) -> Skill:
+    """Create a new custom :class:`~backend.models.skill.Skill` row.
+
+    Args:
+        db: Active async database session.
+        customer_id: UUID of the owning customer.
+        payload: Validated creation payload.
+
+    Returns:
+        The newly created and refreshed :class:`Skill` ORM instance.
+
+    Raises:
+        ValueError: When *payload.name* matches a built-in skill slug.
+        ValueError: When a custom skill with the same name already exists for
+            this customer.
+    """
+    registry = get_skill_registry()
+    if payload.name in registry:
+        raise ValueError(f"Cannot create custom skill with built-in name {payload.name!r}.")
+
+    existing = await db.execute(
+        select(Skill).where(Skill.customer_id == customer_id, Skill.name == payload.name)
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise ValueError(f"A custom skill named {payload.name!r} already exists for this customer.")
+
+    skill = Skill(
+        customer_id=customer_id,
+        name=payload.name,
+        description=payload.description,
+        category=payload.category,
+        applies_to_check_ids=payload.applies_to_check_ids,
+        triggers=payload.triggers,
+        body=payload.body,
+        enabled=payload.enabled,
+        version=1,
+    )
+    db.add(skill)
+    await db.commit()
+    await db.refresh(skill)
+    return skill
+
+
+async def update_skill(
+    db: AsyncSession, customer_id: UUID, name: str, payload: SkillUpdate
+) -> Skill:
+    """Apply a partial update to a skill, respecting built-in vs custom rules.
+
+    For **built-in** skills only the ``enabled`` field is honoured.  Any other
+    field in *payload* triggers a :class:`ValueError`.  The enabled state is
+    persisted via an upserted :class:`~backend.models.skill.SkillToggle` row.
+    A synthetic :class:`Skill` is NOT returned for built-ins; instead the
+    ``SkillToggle`` is written and the original built-in :class:`Skill`-like
+    representation is reconstructed from the registry.
+
+    For **custom** skills all optional fields are applied and ``version`` is
+    bumped when any field other than ``enabled`` changes.
+
+    Args:
+        db: Active async database session.
+        customer_id: UUID of the owning customer.
+        name: Skill slug to update.
+        payload: Partial update payload.
+
+    Returns:
+        The updated :class:`Skill` ORM instance (custom skills only).
+
+    Raises:
+        ValueError: When *name* is a built-in and non-``enabled`` fields are
+            supplied.
+        ValueError: When *name* does not exist as either a built-in or a custom
+            skill for this customer (callers should convert to 404).
+    """
+    registry = get_skill_registry()
+    if name in registry:
+        # Built-in: only enabled changes are allowed.
+        non_enabled_fields = {
+            k for k, v in payload.model_dump(exclude_none=True).items() if k != "enabled"
+        }
+        if non_enabled_fields:
+            raise ValueError(
+                f"Cannot modify {sorted(non_enabled_fields)} on built-in skill {name!r}; "
+                "only 'enabled' may be changed."
+            )
+
+        if payload.enabled is not None:
+            await upsert_skill_toggle(db, customer_id, name, payload.enabled)
+
+        # Return a SkillRead Pydantic model directly for built-ins.
+        # We cannot attach a synthetic ORM instance to the session (SQLAlchemy
+        # mapper instrumentation prevents it), so we build the schema object
+        # directly and return it.  The router calls SkillRead.model_validate()
+        # on the result; Pydantic accepts a SkillRead instance unchanged.
+        builtin = registry[name]
+        toggle_result = await db.execute(
+            select(SkillToggle).where(
+                SkillToggle.customer_id == customer_id,
+                SkillToggle.skill_name == name,
+            )
+        )
+        toggle = toggle_result.scalar_one_or_none()
+        effective_enabled = toggle.enabled if toggle is not None else True
+
+        now = datetime.now(tz=UTC)
+        return SkillRead(
+            id=_uuid_module.uuid4(),
+            customer_id=customer_id,
+            name=name,
+            description=builtin.frontmatter.description,
+            category=builtin.frontmatter.category,
+            applies_to_check_ids=list(builtin.frontmatter.applies_to),
+            triggers=list(builtin.frontmatter.triggers),
+            body=builtin.body,
+            version=builtin.frontmatter.version,
+            enabled=effective_enabled,
+            created_at=now,
+            updated_at=now,
+        )
+
+    # Custom skill path.
+    result = await db.execute(
+        select(Skill).where(Skill.customer_id == customer_id, Skill.name == name)
+    )
+    skill = result.scalar_one_or_none()
+    if skill is None:
+        raise ValueError(f"Skill {name!r} not found for this customer.")
+
+    update_data = payload.model_dump(exclude_none=True)
+    body_changed = False
+    for field, value in update_data.items():
+        if field != "enabled" and getattr(skill, field) != value:
+            body_changed = True
+        setattr(skill, field, value)
+
+    if body_changed:
+        skill.version = skill.version + 1
+
+    await db.commit()
+    await db.refresh(skill)
+    return skill
+
+
+async def delete_skill(db: AsyncSession, customer_id: UUID, name: str) -> None:
+    """Delete a custom skill row and any associated :class:`SkillToggle`.
+
+    Args:
+        db: Active async database session.
+        customer_id: UUID of the owning customer.
+        name: Skill slug to delete.
+
+    Raises:
+        ValueError: When *name* is a built-in skill (use disable instead).
+        ValueError: When no custom skill with *name* exists for this customer.
+    """
+    registry = get_skill_registry()
+    if name in registry:
+        raise ValueError(f"Cannot delete built-in skill {name!r}; disable it instead.")
+
+    result = await db.execute(
+        select(Skill).where(Skill.customer_id == customer_id, Skill.name == name)
+    )
+    skill = result.scalar_one_or_none()
+    if skill is None:
+        raise ValueError(f"Skill {name!r} not found for this customer.")
+
+    # Remove any associated SkillToggle.
+    toggle_result = await db.execute(
+        select(SkillToggle).where(
+            SkillToggle.customer_id == customer_id,
+            SkillToggle.skill_name == name,
+        )
+    )
+    toggle = toggle_result.scalar_one_or_none()
+    if toggle is not None:
+        await db.delete(toggle)
+
+    await db.delete(skill)
+    await db.commit()
+
+
+async def set_connection_override(
+    db: AsyncSession,
+    connection_id: UUID,
+    overrides: dict[str, bool],
+) -> PlatformConnection:
+    """Write *overrides* to :attr:`PlatformConnection.skills_override`.
+
+    An empty *overrides* dict clears the column back to ``NULL`` to keep the
+    database tidy.  Every key in *overrides* must resolve to a skill visible
+    to the connection's customer; unknown names are rejected.
+
+    Args:
+        db: Active async database session.
+        connection_id: UUID of the :class:`PlatformConnection` to update.
+        overrides: Mapping of ``{skill_name: enabled_bool}`` to persist.
+            Pass an empty dict to clear all overrides.
+
+    Returns:
+        The refreshed :class:`PlatformConnection` ORM instance.
+
+    Raises:
+        ValueError: When *connection_id* does not exist.
+        ValueError: When any key in *overrides* is not a known skill for the
+            connection's customer.
+    """
+    connection = await _load_connection(db, connection_id)
+    if connection is None:
+        raise ValueError(f"PlatformConnection {connection_id} not found.")
+
+    if overrides:
+        summaries = await list_available_skills(db, connection.customer_id)
+        known_names = {s.name for s in summaries}
+        unknown = set(overrides) - known_names
+        if unknown:
+            raise ValueError(
+                f"Unknown skill name(s) in overrides: {sorted(unknown)}. "
+                "Only skills visible to this customer may be referenced."
+            )
+
+    connection.skills_override = overrides or None
+    await db.commit()
+    await db.refresh(connection)
+    return connection

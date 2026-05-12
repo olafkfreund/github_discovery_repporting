@@ -113,3 +113,22 @@ class SkillSummary(BaseModel):
     enabled: bool
     version: int
     updated_at: datetime | None = None
+
+
+class SkillsOverridePayload(BaseModel):
+    """PUT body for ``/api/connections/{id}/skills-override``.
+
+    Three states per skill:
+
+    - Present and ``True``: force enabled for this connection.
+    - Present and ``False``: force disabled for this connection.
+    - Absent: inherit customer default.
+
+    Sent as a flat dict ``{skill_name: bool}``.  An empty dict clears all
+    overrides (sets the DB column back to ``NULL``).
+
+    Attributes:
+        overrides: Mapping from skill slug to desired enabled state.
+    """
+
+    overrides: dict[str, bool] = Field(default_factory=dict)
