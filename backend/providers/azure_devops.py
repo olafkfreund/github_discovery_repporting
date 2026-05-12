@@ -1054,6 +1054,32 @@ class AzureDevOpsProvider:
             f"{type(self).__name__}.set_branch_protection is not yet implemented (issue #16)"
         )
 
+    async def check_write_scope(self) -> bool | None:
+        """Check whether the configured PAT has write permissions.
+
+        Azure DevOps REST API does not expose a token self-introspection
+        endpoint that reliably reveals scope assignments for PATs.  The
+        ``connectionData`` endpoint confirms authentication and read access but
+        provides no structured scope metadata usable for a deterministic write
+        check.
+
+        Limitation: This method always returns ``None`` (unknown) for Azure
+        DevOps connections.  Insufficient write scope will surface as a
+        ``ProviderWriteError`` (HTTP 403) at actual write-operation time.
+        Callers should treat ``None`` as "not yet verified — may fail at write
+        time if the PAT lacks Code (Write) permissions."
+
+        Returns:
+            ``None`` always — Azure DevOps scope introspection is not available
+            via the REST API for PAT-based authentication.
+        """
+        logger.debug(
+            "check_write_scope for Azure DevOps org=%r: returning None "
+            "(scope introspection not available for PATs)",
+            self._org_name,
+        )
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Private helpers
