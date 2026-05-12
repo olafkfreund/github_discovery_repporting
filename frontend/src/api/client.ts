@@ -21,6 +21,12 @@ import type {
   LLMConnectionValidatePayload,
   LLMConnectionValidateResult,
 } from '../types/llm'
+import type {
+  AgentRun,
+  AgentRunCostEstimate,
+  AgentRunTriggerPayload,
+  RemediationPolicy,
+} from '../types/agents'
 
 const BASE_URL = '/api'
 
@@ -222,4 +228,24 @@ export const api = {
 
   deleteAgentInstructions: (customerId: string) =>
     request<void>(`/customers/${customerId}/agent-instructions`, { method: 'DELETE' }),
+
+  // Agent Runs
+  getRemediationPolicy: async (customerId: string): Promise<RemediationPolicy | null> => {
+    try {
+      return await request<RemediationPolicy>(`/customers/${customerId}/remediation-policy`)
+    } catch (err) {
+      // 404 means no policy configured yet — return null gracefully
+      if (err instanceof Error && err.message.includes('404')) return null
+      throw err
+    }
+  },
+
+  estimateAgentRunCost: (scanId: string): Promise<AgentRunCostEstimate> =>
+    request<AgentRunCostEstimate>(`/scans/${scanId}/agent-run-estimate`),
+
+  triggerAgentRun: (scanId: string, payload: AgentRunTriggerPayload): Promise<AgentRun> =>
+    request<AgentRun>(`/scans/${scanId}/agent-runs`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 }
