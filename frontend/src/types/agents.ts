@@ -80,6 +80,8 @@ export interface RemediationPolicy {
   id: string
   customer_id: string
   enabled: boolean
+  auto_dispatch: boolean
+  kill_switch_enabled: boolean
   allowed_check_ids: string[]
   blocked_check_ids: string[]
   max_prs_per_scan: number
@@ -87,7 +89,25 @@ export interface RemediationPolicy {
   allowed_path_globs: string[]
   denied_path_globs: string[]
   runtime_mode: 'backend' | 'ci'
-  kill_switch_enabled: boolean
+  oversight_mode: 'strict' | 'standard'
+  llm_input_scope: 'hunk' | 'file' | 'repo-context'
+  created_at: string
+  updated_at: string
+}
+
+export interface RemediationPolicyUpsertPayload {
+  enabled?: boolean
+  auto_dispatch?: boolean
+  kill_switch_enabled?: boolean
+  allowed_check_ids?: string[]
+  blocked_check_ids?: string[]
+  max_prs_per_scan?: number
+  max_cost_usd_per_month?: number
+  allowed_path_globs?: string[]
+  denied_path_globs?: string[]
+  runtime_mode?: 'backend' | 'ci'
+  oversight_mode?: 'strict' | 'standard'
+  llm_input_scope?: 'hunk' | 'file' | 'repo-context'
 }
 
 export interface AgentRunCostEstimate {
