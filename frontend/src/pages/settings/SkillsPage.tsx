@@ -200,7 +200,7 @@ export default function SkillsPage() {
     setTimeout(() => newButtonRef.current?.focus(), 100)
   }
 
-  const handleSaved = (saved: Skill) => {
+  const handleSaved = (_saved: Skill) => {
     void reload()
     setDrawerOpen(false)
     setTimeout(() => newButtonRef.current?.focus(), 100)
