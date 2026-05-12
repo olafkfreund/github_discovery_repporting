@@ -8,6 +8,27 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class AgentProfile(BaseModel):
+    """Public-facing profile metadata for the picker UI."""
+
+    slug: str
+    display_name: str
+    short_description: str
+
+
+class AgentProfileContent(BaseModel):
+    """Full profile body."""
+
+    slug: str
+    body: str
+
+
+class AgentProfilesResponse(BaseModel):
+    """Response envelope for the profile list endpoint."""
+
+    profiles: list[AgentProfile]
+
+
 class AgentInstructionsBase(BaseModel):
     """Shared fields for create and update payloads."""
 
