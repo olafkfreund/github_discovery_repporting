@@ -78,3 +78,14 @@ class ReportStatus(str, Enum):
     generating = "generating"
     completed = "completed"
     failed = "failed"
+
+
+class LLMProviderEnum(str, Enum):
+    """Supported LLM provider backends for per-customer AI configuration."""
+
+    anthropic = "anthropic"
+    openai = "openai"
+    bedrock = "bedrock"
+    azure_openai = "azure_openai"
+    vertex = "vertex"
+    openai_compatible = "openai_compatible"
