@@ -15,6 +15,7 @@ from backend.models.finding import Finding, ScanScore
 from backend.models.scan import Scan, ScanRepo
 from backend.providers.factory import create_provider
 from backend.scanners.orchestrator import ScanOrchestrator
+from backend.services import scan_enrichment_service
 from backend.services.task_limiter import get_scan_semaphore
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,15 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
                 fail_count=cat_score.fail_count,
             )
             session.add(scan_score)
+
+        # ------------------------------------------------------------------
+        # Step 7b: Post-scan LLM enrichment pass (opt-in per customer).
+        # ------------------------------------------------------------------
+        try:
+            await scan_enrichment_service.enrich_findings(session, scan)
+        except Exception:  # noqa: BLE001
+            logger.exception("Scan enrichment failed for scan %s", scan.id)
+            # Continue — never fail the scan on enrichment errors.
 
         # ------------------------------------------------------------------
         # Step 8: Mark scan completed.
