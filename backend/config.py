@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     PORT: int = 8000
     MAX_CONCURRENT_SCANS: int = 3
     MAX_CONCURRENT_REPORTS: int = 5
+    MAX_CONCURRENT_AGENT_RUNS: int = 2
+    AGENT_FEATURE_ENABLED: bool = True
 
     model_config = SettingsConfigDict(
         env_file=".env",
