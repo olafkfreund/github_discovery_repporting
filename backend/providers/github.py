@@ -7,11 +7,12 @@ from functools import partial
 from typing import Any
 
 import yaml
-from github import Auth, Github, GithubException
+from github import Auth, Github, GithubException, InputGitAuthor, InputGitTreeElement
+from github.GithubObject import NotSet
 from github.Repository import Repository as GithubRepo
 
 from backend.models.enums import Platform
-from backend.providers.base import validate_base_url
+from backend.providers.base import ProviderWriteError, validate_base_url
 from backend.schemas.platform_data import (
     BranchProtection,
     BranchProtectionRules,
@@ -377,7 +378,34 @@ class GitHubProvider:
         return await self._run(_fetch_org)
 
     # ---------------------------------------------------------------------------
-    # Write operations (Phase 2 — stubs, see follow-up issue #14)
+    # Internal write helpers
+    # ---------------------------------------------------------------------------
+
+    async def _get_repo(self, repo: NormalizedRepo) -> GithubRepo:
+        """Resolve a :class:`~backend.schemas.platform_data.NormalizedRepo` to a PyGithub ``Repository``.
+
+        Uses ``org_name/repo.name`` as the fully-qualified repo identifier,
+        consistent with how :meth:`get_repo_assessment_data` resolves repositories.
+
+        Args:
+            repo: A normalised repo record previously returned by :meth:`list_repos`.
+
+        Returns:
+            The PyGithub ``Repository`` object.
+
+        Raises:
+            ProviderWriteError: if the repository cannot be found.
+        """
+        repo_slug = f"{self._org_name}/{repo.name}"
+        try:
+            return await self._run(self._client.get_repo, repo_slug)
+        except GithubException as exc:
+            raise ProviderWriteError(
+                f"GitHub error {exc.status} resolving repo {repo_slug}: {exc.data!s}"
+            ) from exc
+
+    # ---------------------------------------------------------------------------
+    # Write operations (Phase 2 — issue #14)
     # ---------------------------------------------------------------------------
 
     async def create_branch(
@@ -386,10 +414,38 @@ class GitHubProvider:
         branch: str,
         from_sha: str,
     ) -> None:
-        """Create a branch — TO BE IMPLEMENTED in issue #14."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.create_branch is not yet implemented (issue #14)"
-        )
+        """Create a new branch at the given commit SHA.
+
+        Uses the Git Refs API via ``Repository.create_git_ref`` so the branch
+        is created atomically without a working-tree checkout.
+
+        Args:
+            repo: Target repository.
+            branch: Name for the new branch (without ``refs/heads/`` prefix).
+            from_sha: Full commit SHA from which to branch.
+
+        Raises:
+            ProviderWriteError: if the branch already exists, if *from_sha* is
+                not found, or on any other GitHub API error.
+        """
+        gh_repo = await self._get_repo(repo)
+
+        def _do() -> None:
+            try:
+                gh_repo.create_git_ref(ref=f"refs/heads/{branch}", sha=from_sha)
+            except GithubException as exc:
+                msg = str(exc.data) if exc.data else ""
+                if exc.status == 422 and "Reference already exists" in msg:
+                    raise ProviderWriteError(
+                        f"Branch '{branch}' already exists on {repo.name}."
+                    ) from exc
+                if exc.status == 422 and "Object does not exist" in msg:
+                    raise ProviderWriteError(
+                        f"Cannot create branch '{branch}' — base SHA {from_sha} not found."
+                    ) from exc
+                raise ProviderWriteError(f"GitHub error {exc.status}: {exc.data!s}") from exc
+
+        await self._run(_do)
 
     async def commit_files(
         self,
@@ -400,10 +456,103 @@ class GitHubProvider:
         author_name: str | None = None,
         author_email: str | None = None,
     ) -> str:
-        """Commit files — TO BE IMPLEMENTED in issue #14."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.commit_files is not yet implemented (issue #14)"
-        )
+        """Commit a set of file changes atomically to *branch* via the Git Tree API.
+
+        The commit is atomic: all file creates, updates, and deletes are applied
+        in a single tree + commit + ref-update sequence.  Non-touched files are
+        preserved via ``base_tree``.
+
+        Args:
+            repo: Target repository.
+            branch: Existing branch to commit to.
+            files: One or more :class:`~backend.schemas.platform_data.FileChange` entries.
+                Each ``create`` or ``update`` entry must supply ``content``.
+            message: Commit message.
+            author_name: Optional author name override; both *author_name* and
+                *author_email* must be supplied together, or neither is used.
+            author_email: Optional author e-mail override.
+
+        Returns:
+            The SHA of the newly created commit.
+
+        Raises:
+            ProviderWriteError: if *files* is empty, if a ``create``/``update``
+                entry is missing content, or on any GitHub API error.
+        """
+        if not files:
+            raise ProviderWriteError("No file changes provided.")
+
+        for file in files:
+            if file.action in {"create", "update"} and file.content is None:
+                raise ProviderWriteError(
+                    f"File {file.path}: content is required for action={file.action}"
+                )
+
+        gh_repo = await self._get_repo(repo)
+
+        def _do() -> str:
+            try:
+                # Step 1: resolve branch tip.
+                ref = gh_repo.get_git_ref(f"heads/{branch}")
+                tip_sha = ref.object.sha
+
+                # Step 2: get the commit and its tree.
+                parent_commit = gh_repo.get_git_commit(tip_sha)
+                current_tree_sha = parent_commit.tree.sha
+
+                # Step 3: build tree entries.
+                tree_entries: list[InputGitTreeElement] = []
+                for fc in files:
+                    if fc.action in {"create", "update"}:
+                        blob = gh_repo.create_git_blob(
+                            content=fc.content,  # type: ignore[arg-type]
+                            encoding="utf-8",
+                        )
+                        tree_entries.append(
+                            InputGitTreeElement(
+                                path=fc.path,
+                                mode=fc.mode,
+                                type="blob",
+                                sha=blob.sha,
+                            )
+                        )
+                    else:  # delete
+                        tree_entries.append(
+                            InputGitTreeElement(
+                                path=fc.path,
+                                mode=fc.mode,
+                                type="blob",
+                                sha=None,
+                            )
+                        )
+
+                # Step 4: create a new tree on top of the existing one.
+                base_tree = gh_repo.get_git_tree(current_tree_sha)
+                new_tree = gh_repo.create_git_tree(
+                    tree=tree_entries,
+                    base_tree=base_tree,
+                )
+
+                # Step 5: create the commit.
+                kwargs: dict[str, Any] = {
+                    "message": message,
+                    "tree": new_tree,
+                    "parents": [parent_commit],
+                }
+                if author_name and author_email:
+                    kwargs["author"] = InputGitAuthor(name=author_name, email=author_email)
+                new_commit = gh_repo.create_git_commit(**kwargs)
+
+                # Step 6: advance the branch ref.
+                ref.edit(sha=new_commit.sha)
+
+                return new_commit.sha
+            except ProviderWriteError:
+                raise
+            except GithubException as exc:
+                raise ProviderWriteError(f"GitHub error {exc.status}: {exc.data!s}") from exc
+
+        return await self._run(_do)
 
     async def create_pull_request(
         self,
@@ -414,20 +563,108 @@ class GitHubProvider:
         body: str,
         draft: bool = True,
     ) -> PullRequestRef:
-        """Open a PR — TO BE IMPLEMENTED in issue #14."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.create_pull_request is not yet implemented (issue #14)"
-        )
+        """Open a pull request from *head* into *base*.
+
+        Args:
+            repo: Target repository.
+            head: Source branch name.
+            base: Target branch name.
+            title: PR title.
+            body: PR description body (Markdown).
+            draft: Whether to open as a draft (default ``True``).
+
+        Returns:
+            A :class:`~backend.schemas.platform_data.PullRequestRef` with the
+            new PR's metadata.
+
+        Raises:
+            ProviderWriteError: if a PR between the branches already exists,
+                if there are no commits between them, or on any other API error.
+        """
+        gh_repo = await self._get_repo(repo)
+
+        def _do() -> PullRequestRef:
+            try:
+                pr = gh_repo.create_pull(
+                    title=title,
+                    body=body,
+                    head=head,
+                    base=base,
+                    draft=draft,
+                )
+                return PullRequestRef(
+                    provider=Platform.github,
+                    repo_external_id=repo.external_id,
+                    pr_number=pr.number,
+                    pr_url=pr.html_url,
+                    head_branch=head,
+                    base_branch=base,
+                    title=title,
+                    is_draft=draft,
+                )
+            except GithubException as exc:
+                msg = str(exc.data) if exc.data else ""
+                if exc.status == 422 and "A pull request already exists" in msg:
+                    raise ProviderWriteError(
+                        f"A PR from '{head}' to '{base}' already exists."
+                    ) from exc
+                if exc.status == 422 and "No commits between" in msg:
+                    raise ProviderWriteError(
+                        f"No diff between '{head}' and '{base}'; cannot open PR."
+                    ) from exc
+                raise ProviderWriteError(f"GitHub PR creation failed: {exc.data!s}") from exc
+
+        return await self._run(_do)
 
     async def get_pr_status(
         self,
         repo: NormalizedRepo,
         pr_number: int,
     ) -> PRStatus:
-        """Fetch PR status — TO BE IMPLEMENTED in issue #14."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.get_pr_status is not yet implemented (issue #14)"
-        )
+        """Read the current state of an existing pull request.
+
+        Args:
+            repo: Repository that owns the PR.
+            pr_number: GitHub pull request number.
+
+        Returns:
+            A :class:`~backend.schemas.platform_data.PRStatus` snapshot.
+
+        Raises:
+            ProviderWriteError: if the PR cannot be found.
+        """
+        gh_repo = await self._get_repo(repo)
+
+        def _do() -> PRStatus:
+            try:
+                pr = gh_repo.get_pull(pr_number)
+            except GithubException as exc:
+                if exc.status == 404:
+                    raise ProviderWriteError(f"PR #{pr_number} not found on {repo.name}.") from exc
+                raise ProviderWriteError(f"GitHub error {exc.status}: {exc.data!s}") from exc
+
+            if pr.merged:
+                state: str = "merged"
+                merged_at = pr.merged_at
+            elif pr.state == "open":
+                state = "open"
+                merged_at = None
+            else:
+                state = "closed"
+                merged_at = None
+
+            return PRStatus(
+                pr_number=pr_number,
+                state=state,  # type: ignore[arg-type]
+                is_draft=pr.draft or False,
+                head_sha=pr.head.sha,
+                head_branch=pr.head.ref,
+                base_branch=pr.base.ref,
+                mergeable=pr.mergeable,
+                merged_at=merged_at,
+            )
+
+        return await self._run(_do)
 
     async def set_branch_protection(
         self,
@@ -435,10 +672,92 @@ class GitHubProvider:
         branch: str,
         rules: BranchProtectionRules,
     ) -> None:
-        """Apply branch protection — TO BE IMPLEMENTED in issue #14."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.set_branch_protection is not yet implemented (issue #14)"
-        )
+        """Apply (or replace) branch-protection settings on *branch*.
+
+        Maps :class:`~backend.schemas.platform_data.BranchProtectionRules` to
+        PyGithub's ``Branch.edit_protection``.  Fields not supported on the
+        GitHub platform (e.g. ``allow_deletions``) are passed through; fields
+        intentionally left as defaults use :data:`~github.GithubObject.NotSet`
+        to avoid overwriting existing settings unintentionally.
+
+        When ``rules.require_pull_request_review`` is ``False``, any existing
+        required-review rule is removed via
+        ``Branch.remove_required_pull_request_reviews`` after the main
+        ``edit_protection`` call.  A 404 from that removal (the rule was never
+        set) is silently ignored.
+
+        Args:
+            repo: Target repository.
+            branch: Branch to protect.
+            rules: Protection rules payload.
+
+        Raises:
+            ProviderWriteError: if the branch is not found (404), if the token
+                lacks admin permission (403), or on any other API error.
+        """
+        gh_repo = await self._get_repo(repo)
+
+        def _do() -> None:
+            try:
+                gh_branch = gh_repo.get_branch(branch)
+            except GithubException as exc:
+                if exc.status == 404:
+                    raise ProviderWriteError(
+                        f"Branch '{branch}' not found on {repo.name}."
+                    ) from exc
+                if exc.status == 403:
+                    raise ProviderWriteError(
+                        f"Insufficient permission to set branch protection on '{branch}'. "
+                        "Token needs admin:repo or equivalent."
+                    ) from exc
+                raise ProviderWriteError(f"GitHub branch-protection failed: {exc.data!s}") from exc
+
+            required_approving_count = (
+                rules.required_reviewer_count if rules.require_pull_request_review else NotSet
+            )
+
+            push_restrictions: list[str] | type[NotSet] = (
+                rules.restrict_push_users if rules.restrict_push_users else NotSet
+            )
+
+            try:
+                gh_branch.edit_protection(
+                    strict=bool(rules.require_status_checks),
+                    contexts=rules.require_status_checks,
+                    enforce_admins=rules.enforce_admins,
+                    dismissal_users=NotSet,
+                    dismissal_teams=NotSet,
+                    dismiss_stale_reviews=NotSet,
+                    require_code_owner_reviews=rules.require_codeowner_review,
+                    required_approving_review_count=required_approving_count,
+                    user_push_restrictions=push_restrictions,
+                    team_push_restrictions=NotSet,
+                    allow_force_pushes=rules.allow_force_pushes,
+                    allow_deletions=rules.allow_deletions,
+                )
+            except GithubException as exc:
+                if exc.status == 404:
+                    raise ProviderWriteError(
+                        f"Branch '{branch}' not found on {repo.name}."
+                    ) from exc
+                if exc.status == 403:
+                    raise ProviderWriteError(
+                        f"Insufficient permission to set branch protection on '{branch}'. "
+                        "Token needs admin:repo or equivalent."
+                    ) from exc
+                raise ProviderWriteError(f"GitHub branch-protection failed: {exc.data!s}") from exc
+
+            # If PR reviews are not required, remove any existing requirement.
+            if not rules.require_pull_request_review:
+                try:
+                    gh_branch.remove_required_pull_request_reviews()
+                except GithubException as exc:
+                    if exc.status != 404:
+                        raise ProviderWriteError(
+                            f"GitHub branch-protection failed: {exc.data!s}"
+                        ) from exc
+
+        await self._run(_do)
 
 
 # ---------------------------------------------------------------------------
