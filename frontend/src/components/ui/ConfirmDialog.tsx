@@ -19,15 +19,33 @@
 //     confirmLabel="Delete"
 //     variant="danger"
 //   />
+//
+//   // With rich body content:
+//   <ConfirmDialog
+//     open={dialogOpen}
+//     title="Run remediation"
+//     message="Configure and launch an agent run for this scan."
+//     body={<MyCustomBodyContent />}
+//     onConfirm={handleConfirm}
+//     onCancel={handleCancel}
+//     confirmLabel="Run remediation"
+//     variant="default"
+//   />
+
+import type { ReactNode } from 'react'
 
 interface ConfirmDialogProps {
   open: boolean
   title: string
   message: string
+  /** Optional rich content rendered below the message paragraph. */
+  body?: ReactNode
   onConfirm: () => void
   onCancel: () => void
   /** Label for the confirm button. Defaults to "Delete". */
   confirmLabel?: string
+  /** Disables the confirm button when true. */
+  confirmDisabled?: boolean
   /** "danger" renders a red confirm button; "default" renders an indigo button. */
   variant?: 'danger' | 'default'
 }
@@ -36,9 +54,11 @@ export function ConfirmDialog({
   open,
   title,
   message,
+  body,
   onConfirm,
   onCancel,
   confirmLabel = 'Delete',
+  confirmDisabled = false,
   variant = 'danger',
 }: ConfirmDialogProps) {
   if (!open) return null
@@ -69,6 +89,7 @@ export function ConfirmDialog({
           {title}
         </h2>
         <p className="mt-2 text-sm text-gray-600">{message}</p>
+        {body && <div className="mt-4">{body}</div>}
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
@@ -82,8 +103,10 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
+            disabled={confirmDisabled}
             className={`px-4 py-2 text-sm font-medium rounded-md
                         focus:outline-none focus:ring-2 focus:ring-offset-2
+                        disabled:opacity-50 disabled:cursor-not-allowed
                         ${confirmClasses}`}
           >
             {confirmLabel}
