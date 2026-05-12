@@ -13,6 +13,13 @@ import type {
   ScanProfileConfig,
   CategoryRegistryInfo,
 } from '../types'
+import type {
+  Skill,
+  SkillContent,
+  SkillCreatePayload,
+  SkillUpdatePayload,
+  SkillsListResponse,
+} from '../types/skills'
 import type { AgentInstructions, AgentInstructionsUpsertPayload } from '../types/agentInstructions'
 import type {
   LLMConnection,
@@ -228,6 +235,30 @@ export const api = {
 
   deleteAgentInstructions: (customerId: string) =>
     request<void>(`/customers/${customerId}/agent-instructions`, { method: 'DELETE' }),
+
+  // Skills
+  listSkills: async (customerId: string): Promise<Skill[]> => {
+    const response = await request<SkillsListResponse>(`/customers/${customerId}/skills`)
+    return response.skills
+  },
+
+  createSkill: (customerId: string, payload: SkillCreatePayload): Promise<Skill> =>
+    request<Skill>(`/customers/${customerId}/skills`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateSkill: (customerId: string, name: string, payload: SkillUpdatePayload): Promise<Skill> =>
+    request<Skill>(`/customers/${customerId}/skills/${name}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteSkill: (customerId: string, name: string): Promise<void> =>
+    request<void>(`/customers/${customerId}/skills/${name}`, { method: 'DELETE' }),
+
+  getSkillContent: (customerId: string, name: string): Promise<SkillContent> =>
+    request<SkillContent>(`/skills/${name}/content?customer_id=${customerId}`),
 
   // Agent Runs
   getRemediationPolicy: async (customerId: string): Promise<RemediationPolicy | null> => {
