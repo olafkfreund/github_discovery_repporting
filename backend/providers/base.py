@@ -7,9 +7,25 @@ from typing import Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 from backend.models.enums import Platform
-from backend.schemas.platform_data import NormalizedRepo, OrgAssessmentData, RepoAssessmentData
+from backend.schemas.platform_data import (
+    BranchProtectionRules,
+    FileChange,
+    NormalizedRepo,
+    OrgAssessmentData,
+    PRStatus,
+    PullRequestRef,
+    RepoAssessmentData,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class ProviderWriteError(RuntimeError):
+    """Raised when a write operation on a platform provider fails.
+
+    Always includes a human-readable message and, where available, the
+    underlying provider's status code or error code in the message body.
+    """
 
 
 def validate_base_url(url: str, allowed_hosts: list[str] | None = None) -> str:
@@ -217,5 +233,122 @@ class PlatformProvider(Protocol):
         Returns:
             An :class:`~backend.schemas.platform_data.OrgAssessmentData`
             instance with org-level security settings, membership info, etc.
+        """
+        ...
+
+    # ---------------------------------------------------------------------------
+    # Write operations (Phase 2 — issue #13)
+    # ---------------------------------------------------------------------------
+
+    async def create_branch(
+        self,
+        repo: NormalizedRepo,
+        branch: str,
+        from_sha: str,
+    ) -> None:
+        """Create a new branch at the given commit SHA.
+
+        Args:
+            repo: Target repository.
+            branch: Name for the new branch.
+            from_sha: The commit SHA from which to branch.
+
+        Raises:
+            ProviderWriteError: if the branch already exists or the SHA does not.
+        """
+        ...
+
+    async def commit_files(
+        self,
+        repo: NormalizedRepo,
+        branch: str,
+        files: list[FileChange],
+        message: str,
+        author_name: str | None = None,
+        author_email: str | None = None,
+    ) -> str:
+        """Commit a set of file changes atomically to *branch*.
+
+        Args:
+            repo: Target repository.
+            branch: Existing branch to commit to.
+            files: One or more :class:`~backend.schemas.platform_data.FileChange` entries.
+            message: Commit message.
+            author_name: Optional override; both name+email must be set or neither.
+            author_email: Optional override.
+
+        Returns:
+            The SHA of the new commit.
+
+        Raises:
+            ProviderWriteError: on any provider-side failure.
+        """
+        ...
+
+    async def create_pull_request(
+        self,
+        repo: NormalizedRepo,
+        head: str,
+        base: str,
+        title: str,
+        body: str,
+        draft: bool = True,
+    ) -> PullRequestRef:
+        """Open a PR/MR from *head* into *base*.
+
+        Args:
+            repo: Target repository.
+            head: Source branch name.
+            base: Target branch name.
+            title: PR/MR title.
+            body: PR/MR description body.
+            draft: Whether to open as a draft (default ``True``).
+
+        Returns:
+            A :class:`~backend.schemas.platform_data.PullRequestRef` with
+            the new PR's metadata.
+
+        Raises:
+            ProviderWriteError: on any provider-side failure.
+        """
+        ...
+
+    async def get_pr_status(
+        self,
+        repo: NormalizedRepo,
+        pr_number: int,
+    ) -> PRStatus:
+        """Read the current state of an existing PR/MR.
+
+        Args:
+            repo: Repository that owns the PR/MR.
+            pr_number: The PR number (GitHub), MR iid (GitLab), or PR id
+                (Azure DevOps).
+
+        Returns:
+            A :class:`~backend.schemas.platform_data.PRStatus` snapshot.
+
+        Raises:
+            ProviderWriteError: if the PR/MR cannot be found or fetched.
+        """
+        ...
+
+    async def set_branch_protection(
+        self,
+        repo: NormalizedRepo,
+        branch: str,
+        rules: BranchProtectionRules,
+    ) -> None:
+        """Apply (or replace) branch-protection settings on *branch*.
+
+        Args:
+            repo: Target repository.
+            branch: Branch to protect.
+            rules: A :class:`~backend.schemas.platform_data.BranchProtectionRules`
+                payload; fields not supported by the platform are silently
+                ignored (documented per implementation).
+
+        Raises:
+            ProviderWriteError: on any provider-side failure.
         """
         ...

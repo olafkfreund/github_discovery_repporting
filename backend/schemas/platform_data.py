@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from backend.models.enums import Platform
 
 # ---------------------------------------------------------------------------
 # Primitive / leaf models
@@ -187,3 +190,64 @@ class RepoAssessmentData(BaseModel):
     container_base_images: list[str] = Field(default_factory=list)
     iac_tool: str | None = None
     test_coverage_percent: float | None = None
+
+
+# ---------------------------------------------------------------------------
+# Write-operation schemas (Phase 2 — issue #13)
+# ---------------------------------------------------------------------------
+
+
+class FileChange(BaseModel):
+    """A single file create/update/delete to include in a commit."""
+
+    path: str = Field(..., description="Repository-relative path, no leading slash.")
+    content: str | None = Field(
+        None,
+        description="UTF-8 file contents. Required for 'create'/'update', omitted for 'delete'.",
+    )
+    action: Literal["create", "update", "delete"] = "update"
+    mode: str = Field("100644", description="Git file mode; rarely needs override.")
+
+
+class PullRequestRef(BaseModel):
+    """Lightweight reference to a freshly-opened PR/MR."""
+
+    provider: Platform
+    repo_external_id: str
+    pr_number: int = Field(..., description="GitHub PR number, GitLab MR iid, or AzDO PR id.")
+    pr_url: str
+    head_branch: str
+    base_branch: str
+    title: str
+    is_draft: bool = True
+
+
+class PRStatus(BaseModel):
+    """Current state of a PR/MR."""
+
+    pr_number: int
+    state: Literal["open", "closed", "merged"]
+    is_draft: bool
+    head_sha: str
+    head_branch: str
+    base_branch: str
+    mergeable: bool | None = Field(None, description="None when provider has not computed yet.")
+    merged_at: datetime | None = None
+
+
+class BranchProtectionRules(BaseModel):
+    """Cross-platform branch-protection request payload.
+
+    Provider implementations map these to native API shapes.  Not every
+    field is honoured on every platform; each implementation documents
+    its mapping in its docstring.
+    """
+
+    require_pull_request_review: bool = True
+    required_reviewer_count: int = Field(1, ge=0, le=6)
+    require_codeowner_review: bool = False
+    require_status_checks: list[str] = Field(default_factory=list)
+    enforce_admins: bool = True
+    allow_force_pushes: bool = False
+    allow_deletions: bool = False
+    restrict_push_users: list[str] = Field(default_factory=list)
