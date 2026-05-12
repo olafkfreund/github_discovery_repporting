@@ -20,6 +20,7 @@ def _register_routers(app: FastAPI) -> None:
     produces a clear ImportError rather than a silent skip.
     """
     from backend.routers.agent_instructions import router as agent_instructions_router
+    from backend.routers.agent_profiles import router as agent_profiles_router
     from backend.routers.connections import router as connections_router
     from backend.routers.customers import router as customers_router
     from backend.routers.dashboard import router as dashboard_router
@@ -28,6 +29,7 @@ def _register_routers(app: FastAPI) -> None:
     from backend.routers.scan_profiles import router as scan_profiles_router
     from backend.routers.scans import router as scans_router
 
+    app.include_router(agent_profiles_router)
     app.include_router(customers_router, prefix="/api")
     app.include_router(connections_router, prefix="/api")
     app.include_router(scans_router, prefix="/api")
