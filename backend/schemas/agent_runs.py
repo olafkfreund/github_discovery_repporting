@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.models.enums import AgentRunStatus, AgentStepType, RemediationActionStatus
 
@@ -82,3 +82,35 @@ class AgentRunTriggerPayload(BaseModel):
     llm_connection_id: UUID
     runtime_mode: Literal["backend", "ci"] = "backend"
     check_ids: list[str] | None = None
+
+
+class AgentStepEventPayload(BaseModel):
+    """Webhook body for CI-mode runner step events.
+
+    Sent by the bps-agent CLI running on the customer's CI runner; signed
+    with HMAC-SHA256 using AgentRun.callback_secret. Mirrors AgentStep
+    columns one-to-one.
+
+    Fields:
+        step_index: Zero-based monotonic counter for this step within the run.
+        step_type: Categorises the step (llm_call, tool_call, tool_result, etc.).
+        prompt_hash: SHA-256 hex digest of the LLM prompt; None for non-LLM steps.
+        tool_name: Name of the tool invoked; None for LLM steps.
+        tool_args_redacted: Sanitised JSON representation of tool arguments.
+        tool_result_redacted: Sanitised plain-text tool result.
+        input_tokens: Prompt tokens consumed (0 for non-LLM steps).
+        output_tokens: Completion tokens produced.
+        latency_ms: Wall-clock duration of this step in milliseconds.
+        status: Outcome string, e.g. "ok" or "error".
+    """
+
+    step_index: int = Field(..., ge=0)
+    step_type: AgentStepType
+    prompt_hash: str | None = None
+    tool_name: str | None = None
+    tool_args_redacted: dict[str, Any] | None = None
+    tool_result_redacted: str | None = None
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    latency_ms: int = Field(default=0, ge=0)
+    status: str = Field(default="ok", max_length=32)
