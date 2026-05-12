@@ -352,3 +352,26 @@ class PlatformProvider(Protocol):
             ProviderWriteError: on any provider-side failure.
         """
         ...
+
+    # ---------------------------------------------------------------------------
+    # Write-scope check (issue #17)
+    # ---------------------------------------------------------------------------
+
+    async def check_write_scope(self) -> bool | None:
+        """Probe whether the configured token has write permissions.
+
+        This method is called after a successful :meth:`validate_connection` to
+        determine whether the token also carries the scopes required for the
+        write operations defined on this protocol.  The result is cached on the
+        :class:`~backend.models.customer.PlatformConnection` row as
+        ``has_write_scope`` so callers can surface a warning before attempting
+        any mutation.
+
+        Returns:
+            ``True`` if write scope is confirmed for this platform's required
+            scopes.  ``False`` if the token's scopes are known to be
+            insufficient.  ``None`` if the platform does not expose enough
+            information to decide deterministically (e.g. Azure DevOps PATs or
+            GitHub fine-grained tokens that omit the ``X-OAuth-Scopes`` header).
+        """
+        ...

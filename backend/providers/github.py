@@ -759,6 +759,54 @@ class GitHubProvider:
 
         await self._run(_do)
 
+    async def check_write_scope(self) -> bool | None:
+        """Check whether the configured PAT has the scopes required for write operations.
+
+        Probes ``GET /user`` via PyGithub, then inspects the ``X-OAuth-Scopes``
+        response header that PyGithub caches on the requester.  Both ``repo``
+        and ``workflow`` scopes must be present for a ``True`` return.
+
+        Returns:
+            ``True``  — both ``repo`` and ``workflow`` scopes are present.
+            ``False`` — either scope is absent; token is read-only or limited.
+            ``None``  — ``X-OAuth-Scopes`` was not returned (e.g. fine-grained
+                PATs which authenticate but do not surface scope lists).
+        """
+
+        def _check() -> bool | None:
+            # A single API call is needed to populate oauth_scopes on the
+            # PyGithub requester.  get_user() is the lightest-weight call
+            # that requires no additional permissions.
+            self._client.get_user()
+            scopes = self._client.oauth_scopes  # list[str] | None
+            if scopes is None:
+                # Fine-grained PATs omit the X-OAuth-Scopes header entirely.
+                logger.debug(
+                    "GitHub token for org=%r does not return X-OAuth-Scopes "
+                    "(likely a fine-grained PAT); write scope unknown.",
+                    self._org_name,
+                )
+                return None
+            required = {"repo", "workflow"}
+            has_write = required.issubset(set(scopes))
+            logger.debug(
+                "GitHub token scopes for org=%r: %s — write_scope=%s",
+                self._org_name,
+                scopes,
+                has_write,
+            )
+            return has_write
+
+        try:
+            return await self._run(_check)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "check_write_scope failed for GitHub org=%r: %s",
+                self._org_name,
+                exc,
+            )
+            return None
+
 
 # ---------------------------------------------------------------------------
 # Private synchronous helpers — called inside run_in_executor workers

@@ -73,6 +73,7 @@ class PlatformConnection(UUIDMixin, TimestampMixin, Base):
     org_or_group: Mapped[str] = mapped_column(String)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    has_write_scope: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
 
     # Relationships
     customer: Mapped[Customer] = relationship(

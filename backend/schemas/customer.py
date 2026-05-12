@@ -91,5 +91,14 @@ class ConnectionResponse(BaseModel):
     org_or_group: str
     is_active: bool
     last_validated_at: datetime | None
+    has_write_scope: bool | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class ConnectionValidationResult(BaseModel):
+    """Response body returned by the connection validation endpoint."""
+
+    valid: bool
+    message: str
+    has_write_scope: bool | None = None

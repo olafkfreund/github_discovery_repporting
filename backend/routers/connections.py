@@ -12,6 +12,7 @@ from backend.schemas.customer import (
     ConnectionCreate,
     ConnectionResponse,
     ConnectionUpdate,
+    ConnectionValidationResult,
 )
 from backend.services import customer_service
 
@@ -159,24 +160,26 @@ async def delete_connection(
 
 @router.post(
     "/connections/{connection_id}/validate",
+    response_model=ConnectionValidationResult,
     summary="Validate a platform connection's credentials",
 )
 async def validate_connection(
     connection_id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> dict[str, object]:
+) -> ConnectionValidationResult:
     """Validate stored credentials by making a live call to the platform.
 
-    On a successful validation the ``last_validated_at`` timestamp is updated
-    on the connection record.  On failure the timestamp is left unchanged and
-    the response body describes the problem.
+    On a successful validation the ``last_validated_at`` timestamp and the
+    ``has_write_scope`` flag are updated on the connection record.  On failure
+    the timestamp is left unchanged and the response body describes the problem.
 
     Args:
         connection_id: UUID of the connection to validate.
         db: Injected async database session.
 
     Returns:
-        A dict with ``"valid"`` (bool) and ``"message"`` (str) keys.
+        A :class:`~backend.schemas.customer.ConnectionValidationResult` with
+        ``valid``, ``message``, and ``has_write_scope`` fields.
 
     Raises:
         HTTPException: 404 if no connection with the given ID exists.
@@ -199,15 +202,15 @@ async def validate_connection(
     try:
         provider = create_provider(connection)
     except NotImplementedError as exc:
-        return {
-            "valid": False,
-            "message": str(exc),
-        }
+        return ConnectionValidationResult(
+            valid=False,
+            message=str(exc),
+        )
     except ValueError as exc:
-        return {
-            "valid": False,
-            "message": f"Credential configuration error: {exc}",
-        }
+        return ConnectionValidationResult(
+            valid=False,
+            message=f"Credential configuration error: {exc}",
+        )
 
     try:
         is_valid = await provider.validate_connection()
@@ -222,22 +225,31 @@ async def validate_connection(
             )
         else:
             detail = msg or f"{type(exc).__name__}: {exc!r}"
-        return {
-            "valid": False,
-            "message": detail,
-        }
+        return ConnectionValidationResult(
+            valid=False,
+            message=detail,
+        )
 
     if is_valid:
-        # Stamp the successful validation time.
+        # Probe write scope and persist both timestamps/flags atomically.
+        write_scope: bool | None = None
+        try:
+            write_scope = await provider.check_write_scope()
+        except Exception:  # noqa: BLE001
+            # check_write_scope errors are non-fatal; leave has_write_scope as None.
+            pass
+
         connection.last_validated_at = datetime.now(tz=UTC)
+        connection.has_write_scope = write_scope
         await db.commit()
         await db.refresh(connection)
-        return {
-            "valid": True,
-            "message": "Connection credentials are valid.",
-        }
+        return ConnectionValidationResult(
+            valid=True,
+            message="Connection credentials are valid.",
+            has_write_scope=write_scope,
+        )
 
-    return {
-        "valid": False,
-        "message": "Credentials are invalid or the platform is unreachable.",
-    }
+    return ConnectionValidationResult(
+        valid=False,
+        message="Credentials are invalid or the platform is unreachable.",
+    )
