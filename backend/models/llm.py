@@ -13,6 +13,7 @@ from backend.models.base import Base, TimestampMixin, UUIDMixin
 from backend.models.enums import LLMProviderEnum
 
 if TYPE_CHECKING:
+    from backend.models.agent_runs import AgentRun
     from backend.models.customer import Customer
 
 
@@ -64,4 +65,8 @@ class LLMConnection(UUIDMixin, TimestampMixin, Base):
     customer: Mapped[Customer] = relationship(
         "Customer",
         back_populates="llm_connections",
+    )
+    agent_runs: Mapped[list[AgentRun]] = relationship(
+        "AgentRun",
+        back_populates="llm_connection",
     )

@@ -11,6 +11,7 @@ from backend.models.base import Base, TimestampMixin, UUIDMixin
 from backend.models.enums import Category, CheckStatus, Severity
 
 if TYPE_CHECKING:
+    from backend.models.agent_runs import RemediationAction
     from backend.models.scan import Scan, ScanRepo
 
 
@@ -49,6 +50,11 @@ class Finding(UUIDMixin, TimestampMixin, Base):
     scan_repo: Mapped[ScanRepo | None] = relationship(
         "ScanRepo",
         back_populates="findings",
+    )
+    remediation_actions: Mapped[list[RemediationAction]] = relationship(
+        "RemediationAction",
+        back_populates="finding",
+        cascade="all, delete-orphan",
     )
 
 
