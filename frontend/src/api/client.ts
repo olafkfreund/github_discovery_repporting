@@ -304,4 +304,23 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  listAgentRuns: async (filters?: {
+    scan_id?: string
+    customer_id?: string
+    status?: string
+    since?: string
+    limit?: number
+    offset?: number
+  }): Promise<AgentRun[]> => {
+    const params = new URLSearchParams()
+    if (filters?.scan_id) params.set('scan_id', filters.scan_id)
+    if (filters?.customer_id) params.set('customer_id', filters.customer_id)
+    if (filters?.status) params.set('status', filters.status)
+    if (filters?.since) params.set('since', filters.since)
+    if (filters?.limit) params.set('limit', String(filters.limit))
+    if (filters?.offset) params.set('offset', String(filters.offset))
+    const qs = params.toString()
+    return request<AgentRun[]>(`/agent-runs${qs ? `?${qs}` : ''}`)
+  },
 }
