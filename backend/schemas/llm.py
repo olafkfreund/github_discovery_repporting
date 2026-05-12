@@ -3,7 +3,7 @@ from __future__ import annotations
 """Pydantic schemas for LLM connection CRUD and validation endpoints."""
 
 from datetime import datetime
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -100,14 +100,12 @@ class OpenAICompatExtra(BaseModel):
 # ---------------------------------------------------------------------------
 
 ExtraConfig = Annotated[
-    Union[
-        AnthropicExtra,
-        OpenAIExtra,
-        BedrockExtra,
-        AzureOpenAIExtra,
-        VertexExtra,
-        OpenAICompatExtra,
-    ],
+    AnthropicExtra
+    | OpenAIExtra
+    | BedrockExtra
+    | AzureOpenAIExtra
+    | VertexExtra
+    | OpenAICompatExtra,
     Field(discriminator="provider"),
 ]
 

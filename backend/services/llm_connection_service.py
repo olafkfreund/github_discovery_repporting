@@ -40,7 +40,9 @@ def _encrypt_key(api_key: str | None) -> bytes | None:
     return secrets_service.encrypt(api_key)
 
 
-async def _clear_other_defaults(db: AsyncSession, customer_id: UUID, exclude_id: UUID | None = None) -> None:
+async def _clear_other_defaults(
+    db: AsyncSession, customer_id: UUID, exclude_id: UUID | None = None
+) -> None:
     """Unset ``is_default`` on all LLM connections for *customer_id* except *exclude_id*.
 
     Args:
@@ -145,9 +147,7 @@ async def get_connection(
         HTTPException: With status 404 if no connection with *connection_id*
             exists.
     """
-    result = await db.execute(
-        select(LLMConnection).where(LLMConnection.id == connection_id)
-    )
+    result = await db.execute(select(LLMConnection).where(LLMConnection.id == connection_id))
     connection = result.scalar_one_or_none()
     if connection is None:
         raise HTTPException(
@@ -247,7 +247,9 @@ def to_provider_config(connection: LLMConnection) -> dict[str, Any]:
         extra = dict(connection.extra_config)
 
     return {
-        "provider": connection.provider.value if hasattr(connection.provider, "value") else str(connection.provider),
+        "provider": connection.provider.value
+        if hasattr(connection.provider, "value")
+        else str(connection.provider),
         "model": connection.model,
         "api_key": api_key,
         "endpoint_url": connection.endpoint_url,
