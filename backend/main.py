@@ -19,6 +19,7 @@ def _register_routers(app: FastAPI) -> None:
     Each router module is imported individually so that a missing module
     produces a clear ImportError rather than a silent skip.
     """
+    from backend.routers.agent_instructions import router as agent_instructions_router
     from backend.routers.connections import router as connections_router
     from backend.routers.customers import router as customers_router
     from backend.routers.dashboard import router as dashboard_router
@@ -34,6 +35,9 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(reports_router, prefix="/api")
     app.include_router(dashboard_router, prefix="/api")
     app.include_router(llm_connections_router)
+    # Register after the customers router; FastAPI matches /{customer_id}/agent-instructions
+    # without shadowing the /customers/ prefix routes since suffixes differ.
+    app.include_router(agent_instructions_router)
 
 
 def _check_weasyprint() -> None:
