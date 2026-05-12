@@ -1,26 +1,17 @@
 import { useState, useEffect, useId } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../api/client'
-import type { AgentInstructions } from '../../types/agentInstructions'
+import type { AgentInstructions, AgentProfile } from '../../types/agentInstructions'
 import type { Connection, ConnectionUpdatePayload } from '../../types'
 import { Spinner } from '../../components/ui/Spinner'
 import { ErrorPanel } from '../../components/ui/ErrorPanel'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import ConnectionOverrideRow from '../../components/settings/ConnectionOverrideRow'
+import ProfilePickerCards from '../../components/settings/ProfilePickerCards'
+import ProfileBadge from '../../components/settings/ProfileBadge'
 import { formatDate } from '../../utils/format'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const DEFAULT_TEMPLATE = `# Agent Instructions
-
-## Build
-
-## Testing
-
-## Style conventions
-
-## Areas to avoid
-`
 
 function relativeSaved(dateStr: string): string {
   const now = Date.now()
@@ -49,9 +40,19 @@ export default function AgentInstructionsPage() {
   const customerId = searchParams.get('customer_id') ?? ''
 
   const [instructions, setInstructions] = useState<AgentInstructions | null>(null)
-  const [draft, setDraft] = useState<Draft>({ content: DEFAULT_TEMPLATE, enabled: true })
-  const [originalDraft, setOriginalDraft] = useState<Draft>({ content: DEFAULT_TEMPLATE, enabled: true })
+  const [draft, setDraft] = useState<Draft>({ content: '', enabled: true })
+  const [originalDraft, setOriginalDraft] = useState<Draft>({ content: '', enabled: true })
   const [connections, setConnections] = useState<Connection[]>([])
+
+  // Profile picker state
+  const [profiles, setProfiles] = useState<AgentProfile[]>([])
+  const [profilesLoading, setProfilesLoading] = useState<boolean>(true)
+  const [pickerVisible, setPickerVisible] = useState<boolean>(false)
+  const [loadingProfileSlug, setLoadingProfileSlug] = useState<string | null>(null)
+  const [profileSlugDraft, setProfileSlugDraft] = useState<string | null>(null)
+
+  // Replace-with-profile dialog state
+  const [replaceDialogOpen, setReplaceDialogOpen] = useState<boolean>(false)
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -74,21 +75,35 @@ export default function AgentInstructionsPage() {
 
     let cancelled = false
     setLoading(true)
+    setProfilesLoading(true)
     setSaveError(null)
 
     Promise.all([
       api.getAgentInstructions(customerId),
       api.listConnections(customerId),
+      api.listAgentProfiles(),
     ])
-      .then(([instrData, connData]) => {
+      .then(([instrData, connData, profilesData]) => {
         if (cancelled) return
-        const initial = instrData
-          ? { content: instrData.content, enabled: instrData.enabled }
-          : { content: DEFAULT_TEMPLATE, enabled: true }
-        setInstructions(instrData)
-        setDraft(initial)
-        setOriginalDraft(initial)
+
+        setProfiles(profilesData)
+        setProfilesLoading(false)
         setConnections(connData)
+
+        if (instrData === null) {
+          // No saved instructions — show picker; leave draft empty
+          setInstructions(null)
+          setPickerVisible(true)
+          setDraft({ content: '', enabled: true })
+          setOriginalDraft({ content: '', enabled: true })
+          setProfileSlugDraft(null)
+        } else {
+          setInstructions(instrData)
+          setPickerVisible(false)
+          setDraft({ content: instrData.content, enabled: instrData.enabled })
+          setOriginalDraft({ content: instrData.content, enabled: instrData.enabled })
+          setProfileSlugDraft(instrData.profile_slug)
+        }
       })
       .catch((err) => {
         if (!cancelled)
@@ -103,6 +118,31 @@ export default function AgentInstructionsPage() {
     }
   }, [customerId])
 
+  // ── Profile pick handler (shared by initial picker + replace dialog) ────────
+
+  async function handleProfilePick(slug: string | null): Promise<void> {
+    if (slug === null) {
+      // Blank document — skip API fetch
+      setDraft((d) => ({ ...d, content: '' }))
+      setProfileSlugDraft(null)
+      setPickerVisible(false)
+      setReplaceDialogOpen(false)
+      return
+    }
+    setLoadingProfileSlug(slug)
+    try {
+      const profileContent = await api.getAgentProfileContent(slug)
+      setDraft((d) => ({ ...d, content: profileContent.body }))
+      setProfileSlugDraft(slug)
+      setPickerVisible(false)
+      setReplaceDialogOpen(false)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to load profile')
+    } finally {
+      setLoadingProfileSlug(null)
+    }
+  }
+
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   async function handleSave() {
@@ -114,9 +154,11 @@ export default function AgentInstructionsPage() {
       const saved = await api.upsertAgentInstructions(customerId, {
         content: draft.content,
         enabled: draft.enabled,
+        profile_slug: profileSlugDraft,
       })
       setInstructions(saved)
       setOriginalDraft({ content: saved.content, enabled: saved.enabled })
+      setProfileSlugDraft(saved.profile_slug)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
     } catch (err) {
@@ -138,9 +180,10 @@ export default function AgentInstructionsPage() {
     try {
       await api.deleteAgentInstructions(customerId)
       setInstructions(null)
-      const reset = { content: DEFAULT_TEMPLATE, enabled: true }
-      setDraft(reset)
-      setOriginalDraft(reset)
+      setPickerVisible(true)
+      setDraft({ content: '', enabled: true })
+      setOriginalDraft({ content: '', enabled: true })
+      setProfileSlugDraft(null)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to delete instructions')
     }
@@ -158,6 +201,12 @@ export default function AgentInstructionsPage() {
   const tokenEstimate = Math.ceil(charCount / 4)
   const canSave =
     !draftsEqual(draft, originalDraft) && draft.content.trim().length > 0 && !saving
+
+  // Resolved display name for the profile badge
+  const resolvedProfileName =
+    profileSlugDraft != null
+      ? (profiles.find((p) => p.slug === profileSlugDraft)?.display_name ?? profileSlugDraft)
+      : null
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -215,78 +264,101 @@ export default function AgentInstructionsPage() {
           </div>
         )}
 
-        {/* Textarea */}
-        <div>
-          <label htmlFor={textareaId} className="sr-only">
-            Agent instructions content
-          </label>
-          <textarea
-            id={textareaId}
-            value={draft.content}
-            onChange={(e) => setDraft((d) => ({ ...d, content: e.target.value }))}
-            rows={20}
-            spellCheck={false}
-            className="font-mono text-sm border border-gray-300 rounded-md p-3 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 w-full resize-y"
-            aria-label="Agent instructions content"
+        {/* Profile picker (shown when no saved instructions) or editor */}
+        {pickerVisible ? (
+          <ProfilePickerCards
+            profiles={profiles}
+            loadingSlug={loadingProfileSlug}
+            onPick={(slug) => { void handleProfilePick(slug) }}
+            disabled={profilesLoading}
           />
-        </div>
+        ) : (
+          <>
+            {/* Profile badge — shown when instructions were based on a profile */}
+            {instructions?.profile_slug != null && resolvedProfileName != null && (
+              <ProfileBadge
+                profileSlug={instructions.profile_slug}
+                profileDisplayName={resolvedProfileName}
+                updatedAt={instructions.updated_at}
+                onReplace={() => setReplaceDialogOpen(true)}
+              />
+            )}
 
-        {/* Meta row: char count + last saved */}
-        <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
-          <span>
-            {charCount.toLocaleString()} / 100,000 chars &middot; ~{tokenEstimate.toLocaleString()} tokens
-          </span>
-          {instructions && (
-            <span>Last saved {relativeSaved(instructions.updated_at)}</span>
-          )}
-        </div>
+            {/* Textarea */}
+            <div>
+              <label htmlFor={textareaId} className="sr-only">
+                Agent instructions content
+              </label>
+              <textarea
+                id={textareaId}
+                value={draft.content}
+                onChange={(e) => setDraft((d) => ({ ...d, content: e.target.value }))}
+                rows={20}
+                spellCheck={false}
+                className="font-mono text-sm border border-gray-300 rounded-md p-3 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 w-full resize-y"
+                aria-label="Agent instructions content"
+              />
+            </div>
 
-        {/* Action row */}
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleDiscard}
-            disabled={draftsEqual(draft, originalDraft)}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md
-                       hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed
-                       focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
-          >
-            Discard changes
-          </button>
+            {/* Meta row: char count + last saved */}
+            <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+              <span>
+                {charCount.toLocaleString()} / 100,000 chars &middot; ~{tokenEstimate.toLocaleString()} tokens
+              </span>
+              {instructions && (
+                <span>Last saved {relativeSaved(instructions.updated_at)}</span>
+              )}
+            </div>
 
-          {instructions && (
-            <button
-              type="button"
-              onClick={() => setConfirmDeleteOpen(true)}
-              className="px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-300 rounded-md
-                         hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-            >
-              Delete instructions
-            </button>
-          )}
+            {/* Action row */}
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleDiscard}
+                disabled={draftsEqual(draft, originalDraft)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md
+                           hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed
+                           focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+              >
+                Discard changes
+              </button>
 
-          <div className="ml-auto flex items-center gap-2">
-            <span
-              id={saveStatusId}
-              aria-live="polite"
-              className="text-xs"
-            >
-              {saving && <span className="text-gray-500">Saving…</span>}
-              {saveSuccess && <span className="text-emerald-700">Saved</span>}
-            </span>
-            <button
-              type="button"
-              onClick={() => { void handleSave() }}
-              disabled={!canSave}
-              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-md
-                         disabled:opacity-40 disabled:cursor-not-allowed
-                         focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
-              aria-describedby={saveStatusId}
-            >
-              Save
-            </button>
-          </div>
-        </div>
+              {instructions && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  className="px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-300 rounded-md
+                             hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                >
+                  Delete instructions
+                </button>
+              )}
+
+              <div className="ml-auto flex items-center gap-2">
+                <span
+                  id={saveStatusId}
+                  role="status"
+                  aria-live="polite"
+                  className="text-xs"
+                >
+                  {saving && <span className="text-gray-500">Saving…</span>}
+                  {saveSuccess && <span className="text-emerald-700">Saved</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { void handleSave() }}
+                  disabled={!canSave}
+                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-md
+                             disabled:opacity-40 disabled:cursor-not-allowed
+                             focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+                  aria-describedby={saveStatusId}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </section>
 
       {/* Divider */}
@@ -327,6 +399,26 @@ export default function AgentInstructionsPage() {
         variant="danger"
         onConfirm={() => { void handleDelete() }}
         onCancel={() => setConfirmDeleteOpen(false)}
+      />
+
+      {/* Replace-with-profile dialog */}
+      <ConfirmDialog
+        open={replaceDialogOpen}
+        title="Replace with profile"
+        message="This will replace the current Agent Instructions content with the chosen profile. The change won't be saved until you click Save."
+        body={
+          <ProfilePickerCards
+            profiles={profiles}
+            loadingSlug={loadingProfileSlug}
+            onPick={(slug) => { void handleProfilePick(slug) }}
+            disabled={profilesLoading}
+          />
+        }
+        onConfirm={() => setReplaceDialogOpen(false)}
+        onCancel={() => setReplaceDialogOpen(false)}
+        confirmLabel="Done"
+        variant="default"
+        confirmDisabled={true}
       />
     </div>
   )

@@ -8,6 +8,7 @@ export interface AgentInstructions {
   customer_id: string
   content: string
   enabled: boolean
+  profile_slug: string | null   // NEW — which profile was used as the starting point
   created_at: string
   updated_at: string
 }
@@ -15,4 +16,20 @@ export interface AgentInstructions {
 export interface AgentInstructionsUpsertPayload {
   content: string
   enabled: boolean
+  profile_slug?: string | null  // NEW — passes through on PUT
+}
+
+export interface AgentProfile {
+  slug: string
+  display_name: string
+  short_description: string
+}
+
+export interface AgentProfileContent {
+  slug: string
+  body: string
+}
+
+export interface AgentProfilesResponse {
+  profiles: AgentProfile[]
 }

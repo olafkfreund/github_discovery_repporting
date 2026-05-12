@@ -13,7 +13,13 @@ import type {
   ScanProfileConfig,
   CategoryRegistryInfo,
 } from '../types'
-import type { AgentInstructions, AgentInstructionsUpsertPayload } from '../types/agentInstructions'
+import type {
+  AgentInstructions,
+  AgentInstructionsUpsertPayload,
+  AgentProfile,
+  AgentProfileContent,
+  AgentProfilesResponse,
+} from '../types/agentInstructions'
 import type {
   LLMConnection,
   LLMConnectionCreatePayload,
@@ -228,6 +234,15 @@ export const api = {
 
   deleteAgentInstructions: (customerId: string) =>
     request<void>(`/customers/${customerId}/agent-instructions`, { method: 'DELETE' }),
+
+  // Agent Profiles
+  listAgentProfiles: async (): Promise<AgentProfile[]> => {
+    const response = await request<AgentProfilesResponse>('/agent-profiles/')
+    return response.profiles
+  },
+
+  getAgentProfileContent: (slug: string): Promise<AgentProfileContent> =>
+    request<AgentProfileContent>(`/agent-profiles/${slug}/content`),
 
   // Agent Runs
   getRemediationPolicy: async (customerId: string): Promise<RemediationPolicy | null> => {
