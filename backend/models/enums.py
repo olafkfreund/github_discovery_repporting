@@ -89,3 +89,35 @@ class LLMProviderEnum(str, Enum):
     azure_openai = "azure_openai"
     vertex = "vertex"
     openai_compatible = "openai_compatible"
+
+
+class AgentRunStatus(str, Enum):
+    """Lifecycle states for a remediation agent run."""
+
+    pending = "pending"
+    running = "running"
+    opening_pr = "opening_pr"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class AgentStepType(str, Enum):
+    """Type of an individual step recorded during an agent run."""
+
+    llm_call = "llm_call"
+    tool_call = "tool_call"
+    tool_result = "tool_result"
+    observation = "observation"
+    final = "final"
+
+
+class RemediationActionStatus(str, Enum):
+    """Lifecycle states for a pull-request remediation action."""
+
+    planned = "planned"
+    in_progress = "in_progress"
+    opened = "opened"
+    merged = "merged"
+    closed = "closed"
+    failed = "failed"

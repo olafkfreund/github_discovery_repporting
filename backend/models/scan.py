@@ -12,6 +12,7 @@ from backend.models.base import Base, TimestampMixin, UUIDMixin
 from backend.models.enums import ScanStatus
 
 if TYPE_CHECKING:
+    from backend.models.agent_runs import AgentRun
     from backend.models.customer import Customer, PlatformConnection
     from backend.models.finding import Finding, ScanScore
 
@@ -71,6 +72,12 @@ class Scan(UUIDMixin, TimestampMixin, Base):
         back_populates="scan",
         cascade="all, delete-orphan",
         lazy="selectin",
+    )
+    agent_runs: Mapped[list[AgentRun]] = relationship(
+        "AgentRun",
+        back_populates="scan",
+        cascade="all, delete-orphan",
+        order_by="AgentRun.started_at",
     )
 
 
