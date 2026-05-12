@@ -27,7 +27,6 @@ def upgrade() -> None:
             sa.dialects.postgresql.UUID(as_uuid=True),
             sa.ForeignKey("customers.id", ondelete="CASCADE"),
             nullable=False,
-            index=True,
         ),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("provider", sa.String(64), nullable=False),
