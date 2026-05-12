@@ -13,6 +13,13 @@ import type {
   ScanProfileConfig,
   CategoryRegistryInfo,
 } from '../types'
+import type {
+  LLMConnection,
+  LLMConnectionCreatePayload,
+  LLMConnectionUpdatePayload,
+  LLMConnectionValidatePayload,
+  LLMConnectionValidateResult,
+} from '../types/llm'
 
 const BASE_URL = '/api'
 
@@ -158,4 +165,37 @@ export const api = {
 
   getRecentScans: () =>
     request<Scan[]>('/dashboard/recent-scans'),
+
+  // LLM Connections
+  listLLMConnections: (customerId: string) =>
+    request<LLMConnection[]>(`/llm-connections/?customer_id=${customerId}`),
+
+  getLLMConnection: (id: string) =>
+    request<LLMConnection>(`/llm-connections/${id}`),
+
+  createLLMConnection: (payload: LLMConnectionCreatePayload) =>
+    request<LLMConnection>('/llm-connections/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateLLMConnection: (id: string, payload: LLMConnectionUpdatePayload) =>
+    request<LLMConnection>(`/llm-connections/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteLLMConnection: (id: string) =>
+    request<void>(`/llm-connections/${id}`, { method: 'DELETE' }),
+
+  validateLLMConnection: (payload: LLMConnectionValidatePayload) =>
+    request<LLMConnectionValidateResult>('/llm-connections/validate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  testLLMConnection: (id: string) =>
+    request<LLMConnectionValidateResult>(`/llm-connections/${id}/test`, {
+      method: 'POST',
+    }),
 }

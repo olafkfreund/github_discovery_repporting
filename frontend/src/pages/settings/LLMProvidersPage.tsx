@@ -1,17 +1,226 @@
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { api } from '../../api/client'
+import type { LLMConnection } from '../../types/llm'
+import { Spinner } from '../../components/ui/Spinner'
+import { ErrorPanel } from '../../components/ui/ErrorPanel'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import LLMConnectionTable from '../../components/settings/LLMConnectionTable'
+import LLMConnectionForm from '../../components/settings/LLMConnectionForm'
+
 export default function LLMProvidersPage() {
+  const [searchParams] = useSearchParams()
+  const customerId = searchParams.get('customer_id') ?? ''
+
+  const [connections, setConnections] = useState<LLMConnection[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [editingConnection, setEditingConnection] = useState<LLMConnection | null>(null)
+
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // Ref to the Add provider button — used to return focus after drawer closes
+  const addButtonRef = useRef<HTMLButtonElement>(null)
+
+  const loadConnections = useCallback(async (id: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await api.listLLMConnections(id)
+      setConnections(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load LLM providers')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!customerId) {
+      setConnections([])
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    api
+      .listLLMConnections(customerId)
+      .then((data) => {
+        if (!cancelled) setConnections(data)
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : 'Failed to load LLM providers')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [customerId])
+
+  const openAdd = () => {
+    setEditingConnection(null)
+    setIsDrawerOpen(true)
+  }
+
+  const openEdit = (conn: LLMConnection) => {
+    setEditingConnection(conn)
+    setIsDrawerOpen(true)
+  }
+
+  const handleSaved = (saved: LLMConnection) => {
+    setConnections((prev) => {
+      const existing = prev.findIndex((c) => c.id === saved.id)
+      if (existing >= 0) {
+        const next = [...prev]
+        next[existing] = saved
+        // If this connection is now default, clear others
+        if (saved.is_default) {
+          return next.map((c) => (c.id !== saved.id ? { ...c, is_default: false } : c))
+        }
+        return next
+      }
+      // New connection — prepend
+      if (saved.is_default) {
+        return [saved, ...prev.map((c) => ({ ...c, is_default: false }))]
+      }
+      return [saved, ...prev]
+    })
+    setIsDrawerOpen(false)
+    setEditingConnection(null)
+    // Return focus to add button
+    setTimeout(() => addButtonRef.current?.focus(), 100)
+  }
+
+  const handleCloseDrawer = () => {
+    setIsDrawerOpen(false)
+    setEditingConnection(null)
+    setTimeout(() => addButtonRef.current?.focus(), 100)
+  }
+
+  const requestDelete = (id: string, name: string) => {
+    setConfirmDelete({ id, name })
+  }
+
+  const performDelete = async () => {
+    if (!confirmDelete) return
+    setDeleting(true)
+    const { id } = confirmDelete
+    setConfirmDelete(null)
+    try {
+      await api.deleteLLMConnection(id)
+      setConnections((prev) => prev.filter((c) => c.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete provider')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleDefaultChange = () => {
+    if (customerId) void loadConnections(customerId)
+  }
+
+  if (!customerId) {
+    return (
+      <div className="p-6">
+        <ErrorPanel message="Select a customer to view LLM providers." />
+      </div>
+    )
+  }
+
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold text-brand-800">LLM Providers</h1>
-      <p className="mt-2 text-sm text-gray-600">
-        Coming soon — see{' '}
-        <a
-          href="https://github.com/olafkfreund/github_discovery_repporting/issues/12"
-          className="text-brand-700 underline"
+      {/* Page header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">LLM Providers</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Configure how AI analysis and remediation reason about findings.
+          </p>
+        </div>
+        <button
+          ref={addButtonRef}
+          onClick={openAdd}
+          className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
         >
-          issue #12
-        </a>
-        .
-      </p>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Add provider
+        </button>
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <Spinner className="h-48" />
+      ) : error ? (
+        <ErrorPanel message={error} onRetry={() => void loadConnections(customerId)} />
+      ) : connections.length === 0 ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <svg
+            className="mx-auto h-12 w-12 text-gray-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+            />
+          </svg>
+          <p className="mt-4 text-gray-500 font-medium">No LLM providers configured</p>
+          <p className="text-gray-400 text-sm mt-1">
+            Add a provider to enable AI-powered analysis for this customer.
+          </p>
+          <button
+            onClick={openAdd}
+            className="mt-4 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+          >
+            Add provider
+          </button>
+        </div>
+      ) : (
+        <>
+          <LLMConnectionTable
+            connections={connections}
+            onEdit={openEdit}
+            onDelete={requestDelete}
+            onDefaultChange={handleDefaultChange}
+          />
+          <p className="mt-3 text-xs text-gray-500">
+            {connections.length} {connections.length === 1 ? 'connection' : 'connections'} configured
+            {deleting && ' — deleting...'}
+          </p>
+        </>
+      )}
+
+      {/* Drawer */}
+      <LLMConnectionForm
+        open={isDrawerOpen}
+        customerId={customerId}
+        initial={editingConnection ?? undefined}
+        onClose={handleCloseDrawer}
+        onSaved={handleSaved}
+      />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete LLM Provider"
+        message={`Delete "${confirmDelete?.name ?? ''}"? This action cannot be undone.`}
+        onConfirm={() => { void performDelete() }}
+        onCancel={() => setConfirmDelete(null)}
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   )
 }
