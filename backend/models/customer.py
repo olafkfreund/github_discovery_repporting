@@ -12,6 +12,7 @@ from backend.models.base import Base, TimestampMixin, UUIDMixin
 from backend.models.enums import AuthType, Platform
 
 if TYPE_CHECKING:
+    from backend.models.agent_instructions import AgentInstructions
     from backend.models.llm import LLMConnection
     from backend.models.scan import Scan
     from backend.models.scan_profile import ScanProfile
@@ -52,6 +53,12 @@ class Customer(UUIDMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    agent_instructions: Mapped[AgentInstructions | None] = relationship(
+        "AgentInstructions",
+        back_populates="customer",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
 
 class PlatformConnection(UUIDMixin, TimestampMixin, Base):
@@ -74,6 +81,9 @@ class PlatformConnection(UUIDMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     has_write_scope: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    agent_instructions_override: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
 
     # Relationships
     customer: Mapped[Customer] = relationship(

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-# Import Base first so all subclasses register against the same metadata.
-from backend.models.base import Base, TimestampMixin, UUIDMixin
-
 # Domain models - imported in dependency order so Alembic autogenerate
 # can discover every mapped class via Base.metadata.
+from backend.models.agent_instructions import AgentInstructions
+
+# Import Base first so all subclasses register against the same metadata.
+from backend.models.base import Base, TimestampMixin, UUIDMixin
 from backend.models.customer import Customer, PlatformConnection
 
 # Enums - no SQLAlchemy dependencies, import early.
@@ -40,6 +41,7 @@ __all__ = [
     "ScanStatus",
     "Severity",
     # Models
+    "AgentInstructions",
     "Customer",
     "CustomRequirement",
     "Finding",
