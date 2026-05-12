@@ -41,6 +41,7 @@ class Finding(UUIDMixin, TimestampMixin, Base):
     evidence: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     weight: Mapped[float] = mapped_column(Float, default=1.0)
     score: Mapped[float] = mapped_column(Float, default=0.0)
+    ai_enrichment: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     # Relationships
     scan: Mapped[Scan] = relationship(

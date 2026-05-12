@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, LargeBinary, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, LargeBinary, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from backend.models.llm import LLMConnection
     from backend.models.scan import Scan
     from backend.models.scan_profile import ScanProfile
+    from backend.models.skill import Skill, SkillToggle
 
 
 class Customer(UUIDMixin, TimestampMixin, Base):
@@ -59,6 +60,21 @@ class Customer(UUIDMixin, TimestampMixin, Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    enable_scan_enrichment: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    skills: Mapped[list[Skill]] = relationship(
+        "Skill",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    skill_toggles: Mapped[list[SkillToggle]] = relationship(
+        "SkillToggle",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 class PlatformConnection(UUIDMixin, TimestampMixin, Base):
@@ -83,6 +99,9 @@ class PlatformConnection(UUIDMixin, TimestampMixin, Base):
     has_write_scope: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
     agent_instructions_override: Mapped[str | None] = mapped_column(
         Text, nullable=True, default=None
+    )
+    skills_override: Mapped[dict[str, bool] | None] = mapped_column(
+        JSON, nullable=True, default=None
     )
 
     # Relationships
