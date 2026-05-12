@@ -8,7 +8,7 @@ from typing import Any
 
 import gitlab
 import yaml
-from gitlab.exceptions import GitlabError
+from gitlab.exceptions import GitlabAuthenticationError, GitlabError
 
 from backend.models.enums import Platform
 from backend.providers.base import validate_base_url
@@ -325,6 +325,52 @@ class GitLabProvider:
         raise NotImplementedError(
             f"{type(self).__name__}.set_branch_protection is not yet implemented (issue #15)"
         )
+
+    async def check_write_scope(self) -> bool | None:
+        """Check whether the configured token has the scopes required for write operations.
+
+        Calls ``GET /personal_access_tokens/self`` via the python-gitlab client
+        to retrieve the authenticated token's scope list.  Required: either
+        ``"api"`` alone, or both ``"read_repository"`` and
+        ``"write_repository"`` together.
+
+        Returns:
+            ``True``  — sufficient write scopes are present.
+            ``False`` — scopes are known but insufficient (read-only).
+            ``None``  — the token type does not support the self-introspection
+                endpoint (e.g. group/deploy tokens); write scope unknown.
+        """
+
+        def _check() -> bool | None:
+            try:
+                pat = self._client.personal_access_tokens.get("self")
+                scopes: list[str] = list(getattr(pat, "scopes", []) or [])
+                if "api" in scopes:
+                    return True
+                if "read_repository" in scopes and "write_repository" in scopes:
+                    return True
+                return False
+            except GitlabAuthenticationError as exc:
+                # Group access tokens and deploy tokens do not support the
+                # /personal_access_tokens/self endpoint and return 401.
+                logger.warning(
+                    "check_write_scope: /personal_access_tokens/self returned "
+                    "AuthenticationError for group=%r — token type may not support "
+                    "self-introspection: %s",
+                    self._group,
+                    exc,
+                )
+                return None
+
+        try:
+            return await self._run(_check)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "check_write_scope failed for GitLab group=%r: %s",
+                self._group,
+                exc,
+            )
+            return None
 
 
 # ---------------------------------------------------------------------------
