@@ -58,6 +58,7 @@ async def upsert(
     if existing is not None:
         existing.content = payload.content
         existing.enabled = payload.enabled
+        existing.profile_slug = payload.profile_slug
         await db.commit()
         await db.refresh(existing)
         return existing
@@ -66,6 +67,7 @@ async def upsert(
         customer_id=customer_id,
         content=payload.content,
         enabled=payload.enabled,
+        profile_slug=payload.profile_slug,
     )
     db.add(row)
     await db.commit()
