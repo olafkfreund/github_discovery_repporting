@@ -4,6 +4,10 @@ import Sidebar from './Sidebar'
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
   '/customers': 'Customers',
+  '/agents': 'Agents Running',
+  '/settings/llm-providers': 'Settings — LLM Providers',
+  '/settings/remediation-policy': 'Settings — Remediation Policy',
+  '/settings/global': 'Settings — Global',
 }
 
 function getPageTitle(pathname: string): string {
@@ -15,6 +19,8 @@ function getPageTitle(pathname: string): string {
     return 'Customer Detail'
   }
   if (pathname.startsWith('/scans/')) return 'Scan Detail'
+  if (pathname.startsWith('/agents/')) return 'Agent Run Detail'
+  if (pathname.startsWith('/settings')) return 'Settings'
   return 'DevOps Discovery'
 }
 
