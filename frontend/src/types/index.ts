@@ -20,6 +20,8 @@ export interface Connection {
   last_validated_at: string | null
   created_at: string
   updated_at: string
+  /** Per-connection agent instructions override. Null = use customer default. */
+  agent_instructions_override?: string | null
 }
 
 export interface Scan {
@@ -150,6 +152,8 @@ export interface ConnectionUpdatePayload {
   auth_type?: 'token' | 'oauth' | 'pat'
   credentials?: string
   base_url?: string | null
+  /** Pass null to clear the override; omit to preserve current value. */
+  agent_instructions_override?: string | null
 }
 
 export interface CustomerCreatePayload {

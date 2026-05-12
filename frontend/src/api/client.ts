@@ -13,6 +13,7 @@ import type {
   ScanProfileConfig,
   CategoryRegistryInfo,
 } from '../types'
+import type { AgentInstructions, AgentInstructionsUpsertPayload } from '../types/agentInstructions'
 import type {
   LLMConnection,
   LLMConnectionCreatePayload,
@@ -198,4 +199,27 @@ export const api = {
     request<LLMConnectionValidateResult>(`/llm-connections/${id}/test`, {
       method: 'POST',
     }),
+
+  // Agent Instructions
+  getAgentInstructions: async (customerId: string): Promise<AgentInstructions | null> => {
+    const res = await fetch(`${BASE_URL}/customers/${customerId}/agent-instructions`, {
+      headers: { 'Content-Type': 'application/json' },
+    })
+    if (res.status === 404) return null
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      const detail = (body as { detail?: string }).detail
+      throw new Error(detail ?? res.statusText)
+    }
+    return res.json() as Promise<AgentInstructions>
+  },
+
+  upsertAgentInstructions: (customerId: string, payload: AgentInstructionsUpsertPayload) =>
+    request<AgentInstructions>(`/customers/${customerId}/agent-instructions`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteAgentInstructions: (customerId: string) =>
+    request<void>(`/customers/${customerId}/agent-instructions`, { method: 'DELETE' }),
 }
