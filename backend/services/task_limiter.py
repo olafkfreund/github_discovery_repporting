@@ -22,6 +22,7 @@ from backend.config import settings
 # Module-level semaphores — shared across the application lifetime.
 _scan_semaphore: asyncio.Semaphore | None = None
 _report_semaphore: asyncio.Semaphore | None = None
+_agent_semaphore: asyncio.Semaphore | None = None
 
 
 def get_scan_semaphore() -> asyncio.Semaphore:
@@ -56,13 +57,30 @@ def get_report_semaphore() -> asyncio.Semaphore:
     return _report_semaphore
 
 
+def get_agent_semaphore() -> asyncio.Semaphore:
+    """Return the shared agent-run concurrency semaphore, creating it if needed.
+
+    Sized by :attr:`~backend.config.Settings.MAX_CONCURRENT_AGENT_RUNS`
+    (default 2). Excess agent runs queue inside ``async with`` rather than
+    being rejected.
+
+    Returns:
+        The application-wide :class:`asyncio.Semaphore` for agent-run tasks.
+    """
+    global _agent_semaphore
+    if _agent_semaphore is None:
+        _agent_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_AGENT_RUNS)
+    return _agent_semaphore
+
+
 def reset_semaphores() -> None:
-    """Reset both semaphores to ``None`` so they are recreated on next access.
+    """Reset all semaphores to ``None`` so they are recreated on next access.
 
     Intended for use in tests only — resetting between test runs prevents a
     semaphore created in one test from carrying its internal counter state
     (and its event-loop association) into the next test.
     """
-    global _scan_semaphore, _report_semaphore
+    global _scan_semaphore, _report_semaphore, _agent_semaphore
     _scan_semaphore = None
     _report_semaphore = None
+    _agent_semaphore = None
