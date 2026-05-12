@@ -10,6 +10,7 @@ interface TabDefinition {
 const TABS: TabDefinition[] = [
   { to: '/settings/llm-providers', label: 'LLM Providers' },
   { to: '/settings/remediation-policy', label: 'Remediation Policy' },
+  { to: '/settings/agent-instructions', label: 'Agent Instructions' },
   { to: '/settings/global', label: 'Global' },
 ]
 
