@@ -14,16 +14,19 @@ subscriber side with proper ref-counting + asynccontextmanager support.
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
 
 class EventBus:
-    """Per-AgentRun event queue registry."""
+    """Per-AgentRun event queue registry with subscriber ref-counting."""
 
     def __init__(self) -> None:
         self._queues: dict[UUID, asyncio.Queue] = {}
+        self._subscriber_counts: dict[UUID, int] = {}
 
     def get_queue(self, run_id: UUID) -> asyncio.Queue:
         """Return (creating if needed) the queue for *run_id*. Buffer size 1000."""
@@ -47,17 +50,50 @@ class EventBus:
         queue = self.get_queue(run_id)
         await queue.put(event)
 
+    @asynccontextmanager
+    async def subscribe(self, run_id: UUID) -> AsyncIterator[asyncio.Queue]:
+        """Acquire the queue for *run_id* and bump the subscriber ref count.
+
+        On exit the count is decremented.  Cleanup of the queue is NOT
+        automatic here — the runner is responsible for calling
+        :meth:`cleanup` when the run reaches a terminal state, to avoid
+        discarding events that arrive after the last subscriber exits.
+
+        Args:
+            run_id: UUID of the agent run to subscribe to.
+
+        Yields:
+            The :class:`asyncio.Queue` for *run_id*.
+        """
+        queue = self.get_queue(run_id)
+        self._subscriber_counts[run_id] = self._subscriber_counts.get(run_id, 0) + 1
+        try:
+            yield queue
+        finally:
+            self._subscriber_counts[run_id] = max(0, self._subscriber_counts.get(run_id, 1) - 1)
+
+    def subscriber_count(self, run_id: UUID) -> int:
+        """Return the number of active subscribers for *run_id*.
+
+        Args:
+            run_id: UUID of the agent run to query.
+
+        Returns:
+            Integer subscriber count; 0 if *run_id* has no active subscribers.
+        """
+        return self._subscriber_counts.get(run_id, 0)
+
     def cleanup(self, run_id: UUID) -> None:
         """Remove the queue for *run_id*.
 
         Called by the runner when the run reaches a terminal state.  Any
-        pending items in the buffer are silently discarded; issue #27 will
-        add subscriber ref-counting to guarantee delivery before cleanup.
+        pending items in the buffer are silently discarded.
 
         Args:
             run_id: UUID of the agent run whose queue should be removed.
         """
         discarded = self._queues.pop(run_id, None)
+        self._subscriber_counts.pop(run_id, None)
         if discarded is not None and not discarded.empty():
             logger.debug(
                 "EventBus.cleanup: discarded %d unread events for run %s",
