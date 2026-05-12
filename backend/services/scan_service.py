@@ -16,7 +16,7 @@ from backend.models.llm import LLMConnection
 from backend.models.scan import Scan, ScanRepo
 from backend.providers.factory import create_provider
 from backend.scanners.orchestrator import ScanOrchestrator
-from backend.services import agent_service, scan_enrichment_service
+from backend.services import agent_service, kill_switch_service, scan_enrichment_service
 from backend.services.task_limiter import get_scan_semaphore
 
 logger = logging.getLogger(__name__)
@@ -345,8 +345,9 @@ async def _maybe_dispatch_agent_run(session: AsyncSession, scan: Scan) -> None:
     1. Loads the customer row (policy eager-loaded via selectin).
     2. Reads ``customer.remediation_policy.auto_dispatch`` (``False`` when policy
        is ``None``).
-    3. Short-circuits if ``auto_dispatch`` is ``False`` or ``kill_switch_enabled``
-       is ``True``.
+    3. Short-circuits if ``auto_dispatch`` is ``False`` or the 3-layer kill switch
+       check (via :func:`~backend.services.kill_switch_service.check`) reports
+       engagement.
     4. Picks the customer's default LLM connection; logs and returns when none
        is found.
     5. Calls :func:`~backend.services.agent_service.create_agent_run` and
@@ -374,15 +375,17 @@ async def _maybe_dispatch_agent_run(session: AsyncSession, scan: Scan) -> None:
         # so it arrives automatically with the customer row.
         policy = customer.remediation_policy
         auto_dispatch = bool(policy and policy.auto_dispatch)
-        kill_switch = bool(policy and policy.kill_switch_enabled)
 
         if not auto_dispatch:
             return
 
-        if kill_switch:
+        # 3-layer kill switch check (global → customer).
+        ks = await kill_switch_service.check(session, customer.id)
+        if ks.engaged:
             logger.info(
-                "scan_service: auto-dispatch skipped for scan %s (kill switch active)",
+                "scan_service: auto-dispatch skipped for scan %s (kill switch active at %s layer)",
                 scan.id,
+                ks.layer,
             )
             return
 

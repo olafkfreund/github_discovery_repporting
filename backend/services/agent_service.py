@@ -24,6 +24,7 @@ from backend.models.enums import AgentRunStatus, ScanStatus
 from backend.models.finding import Finding
 from backend.models.llm import LLMConnection
 from backend.models.scan import Scan
+from backend.services import kill_switch_service
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,8 @@ async def create_agent_run(
     1. Scan exists — :http:statuscode:`404` if not.
     2. Scan status is ``completed`` — :http:statuscode:`409` if not.
     3. LLMConnection exists — :http:statuscode:`404` if not.
-    4. No non-terminal AgentRun already exists for this scan — :http:statuscode:`409`.
+    4. Kill switch not engaged (global or customer layer) — :http:statuscode:`403` if engaged.
+    5. No non-terminal AgentRun already exists for this scan — :http:statuscode:`409`.
 
     On success a new row is committed in ``pending`` state.
     ``callback_secret`` is populated with 32 cryptographically-random bytes
@@ -129,6 +131,8 @@ async def create_agent_run(
 
     Raises:
         HTTPException: 404 when scan or LLM connection is not found.
+        HTTPException: 403 when a kill switch is engaged at the global or
+            customer layer.
         HTTPException: 409 when the scan is not completed or a non-terminal
             run already exists.
     """
@@ -162,7 +166,15 @@ async def create_agent_run(
             detail=f"LLM connection {llm_connection_id} not found.",
         )
 
-    # 4. No active (non-terminal) run already exists for this scan?
+    # 4. Kill switch check (global → customer layers).
+    ks = await kill_switch_service.check(db, scan.customer_id)
+    if ks.engaged:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Kill switch engaged at {ks.layer} layer; cannot create agent runs.",
+        )
+
+    # 5. No active (non-terminal) run already exists for this scan?
     terminal_statuses = {
         AgentRunStatus.completed,
         AgentRunStatus.failed,
