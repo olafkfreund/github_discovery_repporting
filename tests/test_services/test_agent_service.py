@@ -494,3 +494,90 @@ async def test_trigger_backend_run_schedules_runner(db_session: AsyncSession) ->
     assert run.id in called_with
 
     await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# create_agent_run — kill switch (issue #46)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_agent_run_global_kill_switch_raises_403(
+    db_session: AsyncSession,
+) -> None:
+    """create_agent_run raises 403 when the global kill switch is engaged."""
+    from fastapi import HTTPException
+
+    from backend.schemas.setting import SettingUpdate
+    from backend.services import settings_service
+
+    customer = await _make_customer(db_session)
+    conn = await _make_connection(db_session, customer.id)
+    llm = await _make_llm(db_session, customer.id)
+    scan = await _make_scan(db_session, customer.id, conn.id)
+    # Enable global kill switch.
+    await settings_service.update_settings(
+        db_session, SettingUpdate(global_kill_switch_enabled=True)
+    )
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.create_agent_run(
+            db_session,
+            scan_id=scan.id,
+            llm_connection_id=llm.id,
+        )
+    assert exc_info.value.status_code == 403
+    assert "global" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_create_agent_run_customer_kill_switch_raises_403(
+    db_session: AsyncSession,
+) -> None:
+    """create_agent_run raises 403 when the customer-level kill switch is engaged."""
+    from fastapi import HTTPException
+
+    from backend.models.remediation_policy import RemediationPolicy
+
+    customer = await _make_customer(db_session)
+    conn = await _make_connection(db_session, customer.id)
+    llm = await _make_llm(db_session, customer.id)
+    scan = await _make_scan(db_session, customer.id, conn.id)
+    # Customer-level kill switch on.
+    policy = RemediationPolicy(customer_id=customer.id, kill_switch_enabled=True)
+    db_session.add(policy)
+    await db_session.commit()
+    await db_session.refresh(customer)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.create_agent_run(
+            db_session,
+            scan_id=scan.id,
+            llm_connection_id=llm.id,
+        )
+    assert exc_info.value.status_code == 403
+    assert "customer" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_create_agent_run_no_kill_switch_succeeds(
+    db_session: AsyncSession,
+) -> None:
+    """create_agent_run succeeds when both global and customer kill switches are off."""
+    from backend.models.remediation_policy import RemediationPolicy
+
+    customer = await _make_customer(db_session)
+    conn = await _make_connection(db_session, customer.id)
+    llm = await _make_llm(db_session, customer.id)
+    scan = await _make_scan(db_session, customer.id, conn.id)
+    policy = RemediationPolicy(customer_id=customer.id, kill_switch_enabled=False)
+    db_session.add(policy)
+    await db_session.commit()
+
+    run = await svc.create_agent_run(
+        db_session,
+        scan_id=scan.id,
+        llm_connection_id=llm.id,
+    )
+    assert run.status == AgentRunStatus.pending

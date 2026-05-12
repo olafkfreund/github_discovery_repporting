@@ -1,11 +1,14 @@
 """Tests for backend.services.scan_service — auto-dispatch hook.
 
 Tests the ``_maybe_dispatch_agent_run`` behaviour added for issue #32,
-updated for issue #43 which materialises the ``RemediationPolicy`` model.
+updated for issue #43 which materialises the ``RemediationPolicy`` model,
+and updated for issue #46 which adds the 3-layer kill-switch helper.
 
 Strategy:
   - Use an in-memory SQLite engine (mirrors conftest.py pattern) for setup.
   - Insert real ``RemediationPolicy`` rows linked to the customer under test.
+  - Patch ``kill_switch_service.check`` directly to control kill-switch state
+    without requiring real Setting rows (kill_switch_service is tested separately).
   - Mock ``agent_service.create_agent_run`` and ``trigger_backend_run`` to avoid
     real DB/background-task side-effects.
   - Patch ``backend.database.AsyncSessionLocal`` via ``backend.database`` module
@@ -35,7 +38,17 @@ from backend.models.enums import (
 from backend.models.llm import LLMConnection
 from backend.models.remediation_policy import RemediationPolicy
 from backend.models.scan import Scan
+from backend.services.kill_switch_service import KillSwitchState
 from backend.services.secrets_service import secrets_service
+
+# Convenience: a KillSwitchState indicating "not engaged" used by most tests.
+_KS_NOT_ENGAGED = KillSwitchState(engaged=False, layer="none", reason=None)
+_KS_CUSTOMER_ENGAGED = KillSwitchState(
+    engaged=True, layer="customer", reason="Customer kill switch is engaged."
+)
+_KS_GLOBAL_ENGAGED = KillSwitchState(
+    engaged=True, layer="global", reason="Global kill switch is engaged."
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures: isolated in-memory SQLite engine per test
@@ -173,6 +186,11 @@ async def test_no_remediation_policy_no_dispatch(scan_svc_db) -> None:
     with (
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
         patch("backend.services.scan_service.agent_service") as mock_svc,
+        patch(
+            "backend.services.scan_service.kill_switch_service.check",
+            new_callable=AsyncMock,
+            return_value=_KS_NOT_ENGAGED,
+        ),
     ):
         await _maybe_dispatch_agent_run(scan_svc_db, scan)
 
@@ -195,6 +213,11 @@ async def test_auto_dispatch_false_no_dispatch(scan_svc_db) -> None:
     with (
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
         patch("backend.services.scan_service.agent_service") as mock_svc,
+        patch(
+            "backend.services.scan_service.kill_switch_service.check",
+            new_callable=AsyncMock,
+            return_value=_KS_NOT_ENGAGED,
+        ),
     ):
         await _maybe_dispatch_agent_run(scan_svc_db, scan)
 
@@ -221,6 +244,11 @@ async def test_auto_dispatch_true_kill_switch_off_dispatches(scan_svc_db) -> Non
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
         patch("backend.services.scan_service.agent_service") as mock_svc,
         patch(
+            "backend.services.scan_service.kill_switch_service.check",
+            new_callable=AsyncMock,
+            return_value=_KS_NOT_ENGAGED,
+        ),
+        patch(
             "backend.database.AsyncSessionLocal",
             return_value=_fake_session_ctx(scan_svc_db),
         ),
@@ -242,7 +270,7 @@ async def test_auto_dispatch_true_kill_switch_off_dispatches(scan_svc_db) -> Non
 
 @pytest.mark.asyncio
 async def test_auto_dispatch_true_kill_switch_active_no_dispatch(scan_svc_db) -> None:
-    """auto_dispatch=True but kill_switch=True → no AgentRun, log message."""
+    """auto_dispatch=True but customer kill_switch=True → no AgentRun, log message."""
     from backend.services.scan_service import _maybe_dispatch_agent_run
 
     scaffold = await _build_scan_scaffold(scan_svc_db)
@@ -254,6 +282,11 @@ async def test_auto_dispatch_true_kill_switch_active_no_dispatch(scan_svc_db) ->
     with (
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
         patch("backend.services.scan_service.agent_service") as mock_svc,
+        patch(
+            "backend.services.scan_service.kill_switch_service.check",
+            new_callable=AsyncMock,
+            return_value=_KS_CUSTOMER_ENGAGED,
+        ),
     ):
         await _maybe_dispatch_agent_run(scan_svc_db, scan)
 
@@ -282,6 +315,11 @@ async def test_auto_dispatch_no_llm_connection_no_dispatch(scan_svc_db) -> None:
     with (
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
         patch("backend.services.scan_service.agent_service") as mock_svc,
+        patch(
+            "backend.services.scan_service.kill_switch_service.check",
+            new_callable=AsyncMock,
+            return_value=_KS_NOT_ENGAGED,
+        ),
     ):
         await _maybe_dispatch_agent_run(scan_svc_db, scan)
 
@@ -303,6 +341,11 @@ async def test_auto_dispatch_create_raises_exception_does_not_propagate(scan_svc
         patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
         patch("backend.services.scan_service.agent_service") as mock_svc,
         patch(
+            "backend.services.scan_service.kill_switch_service.check",
+            new_callable=AsyncMock,
+            return_value=_KS_NOT_ENGAGED,
+        ),
+        patch(
             "backend.database.AsyncSessionLocal",
             return_value=_fake_session_ctx(scan_svc_db),
         ),
@@ -318,3 +361,29 @@ async def test_auto_dispatch_create_raises_exception_does_not_propagate(scan_svc
 
     # Scan still in completed state — the exception didn't roll back the scan row.
     assert scan.status == ScanStatus.completed
+
+
+@pytest.mark.asyncio
+async def test_auto_dispatch_global_kill_switch_skips(scan_svc_db) -> None:
+    """Global kill switch engaged → auto-dispatch silently skipped (issue #46)."""
+    from backend.services.scan_service import _maybe_dispatch_agent_run
+
+    scaffold = await _build_scan_scaffold(scan_svc_db)
+    scan = scaffold["scan"]
+    customer = scaffold["customer"]
+    await _add_policy(scan_svc_db, customer.id, auto_dispatch=True, kill_switch_enabled=False)
+    await scan_svc_db.refresh(customer)
+
+    with (
+        patch.object(scan_svc_db, "get", AsyncMock(return_value=customer)),
+        patch("backend.services.scan_service.agent_service") as mock_svc,
+        patch(
+            "backend.services.scan_service.kill_switch_service.check",
+            new_callable=AsyncMock,
+            return_value=_KS_GLOBAL_ENGAGED,
+        ),
+    ):
+        await _maybe_dispatch_agent_run(scan_svc_db, scan)
+
+    mock_svc.create_agent_run.assert_not_called()
+    mock_svc.trigger_backend_run.assert_not_called()
