@@ -14,7 +14,10 @@ from __future__ import annotations
    pipeline can continue rather than crashing.
 
 A module-level singleton :data:`analyzer` is created at import time using
-the :data:`~backend.analysis.client.analysis_client` singleton.
+a lazily-constructed default :class:`~backend.analysis.client.AnalysisClient`.
+Pass a custom :class:`~backend.analysis.client.AnalysisClient` to
+:class:`DevOpsAnalyzer.__init__` (or to :meth:`DevOpsAnalyzer.analyze_scan`)
+to use a different LLM provider.
 """
 
 import json
@@ -24,7 +27,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from backend.analysis.client import AnalysisClient, AnalysisClientError, analysis_client
+from backend.analysis.client import AnalysisClient, AnalysisClientError, get_analysis_client
 from backend.analysis.platform_context import get_display_name, get_platform_context
 from backend.analysis.prompts import PLATFORM_CONTEXT_TEMPLATE, SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 from backend.analysis.schemas import (
@@ -65,8 +68,8 @@ class DevOpsAnalyzer:
 
     Args:
         client: The :class:`~backend.analysis.client.AnalysisClient` to use
-                for model calls.  Defaults to the module-level singleton when
-                constructing :data:`analyzer`.
+                for model calls.  When ``None``, :func:`get_analysis_client`
+                is called lazily on the first :meth:`analyze_scan` invocation.
 
     Example::
 
@@ -78,8 +81,8 @@ class DevOpsAnalyzer:
         )
     """
 
-    def __init__(self, client: AnalysisClient) -> None:
-        self._client: AnalysisClient = client
+    def __init__(self, client: AnalysisClient | None = None) -> None:
+        self._client: AnalysisClient | None = client
 
     # ------------------------------------------------------------------
     # Public API
@@ -92,6 +95,7 @@ class DevOpsAnalyzer:
         category_scores: dict[Category, CategoryScore],
         overall_score: float,
         platform: Platform = Platform.github,
+        analysis_client: AnalysisClient | None = None,
     ) -> AnalysisResult:
         """Run the complete AI analysis pipeline and return structured results.
 
@@ -101,7 +105,8 @@ class DevOpsAnalyzer:
         2. Compute DORA, OpenSSF, SLSA, and CIS benchmark data.
         3. Build the user prompt from the template.
         4. Inject the :class:`~backend.analysis.schemas.AnalysisResult` JSON
-           schema into the prompt so the model knows the required output shape.
+           schema into the prompt (or pass it natively when the provider
+           supports structured output).
         5. Call the AI client.
         6. Strip any markdown fences and attempt JSON parsing + Pydantic
            validation.
@@ -109,17 +114,26 @@ class DevOpsAnalyzer:
            or a fallback result if any step fails.
 
         Args:
-            org_name:        Display name of the organisation being assessed.
-            scan_results:    All :class:`~backend.scanners.base.CheckResult`
-                             objects produced by the scanner pipeline.
-            category_scores: Per-category scoring data keyed by
-                             :class:`~backend.models.enums.Category`.
-            overall_score:   The weighted overall score in ``[0.0, 100.0]``.
+            org_name:         Display name of the organisation being assessed.
+            scan_results:     All :class:`~backend.scanners.base.CheckResult`
+                              objects produced by the scanner pipeline.
+            category_scores:  Per-category scoring data keyed by
+                              :class:`~backend.models.enums.Category`.
+            overall_score:    The weighted overall score in ``[0.0, 100.0]``.
+            platform:         The source platform being assessed.
+            analysis_client:  Optional :class:`~backend.analysis.client.AnalysisClient`
+                              override.  When ``None`` the client stored on the
+                              instance (or the default client from
+                              :func:`~backend.analysis.client.get_analysis_client`)
+                              is used.
 
         Returns:
             A fully populated :class:`~backend.analysis.schemas.AnalysisResult`.
             Never raises — on failure a fallback result is returned.
         """
+        # Resolve the client to use for this invocation.
+        effective_client: AnalysisClient = analysis_client or self._client or get_analysis_client()
+
         # Step 1: Derive passed check IDs.
         passed_ids: set[str] = {
             r.check.check_id for r in scan_results if r.status is CheckStatus.passed
@@ -143,7 +157,24 @@ class DevOpsAnalyzer:
                 // max(1, sum(cs.finding_count for cs in category_scores.values()) or 1),
             )
 
-        json_schema: str = json.dumps(AnalysisResult.model_json_schema(), indent=2)
+        schema_dict: dict[str, Any] = AnalysisResult.model_json_schema()
+
+        # Detect whether the underlying provider supports native structured
+        # output.  When it does we pass the schema via chat(json_schema=...)
+        # and skip injecting it into the user prompt text.
+        provider_supports_structured: bool = getattr(
+            type(effective_client._provider), "supports_structured_output", False
+        )
+
+        # Build the JSON schema string for prompt injection when the provider
+        # does NOT support native structured output.  When it does, we pass an
+        # empty placeholder so the template still formats without error.
+        if provider_supports_structured:
+            json_schema_str = "(Schema provided natively via structured-output API.)"
+            native_json_schema: dict[str, Any] | None = schema_dict
+        else:
+            json_schema_str = json.dumps(schema_dict, indent=2)
+            native_json_schema = None
 
         # Build platform-specific context block for the prompt.
         ctx = get_platform_context(platform)
@@ -166,14 +197,15 @@ class DevOpsAnalyzer:
                 slsa_level=slsa_level,
                 cis=cis_compliance,
             ),
-            json_schema=json_schema,
+            json_schema=json_schema_str,
         )
 
         # Step 5: Call the AI client.
         try:
-            raw_response: str = await self._client.analyze(
+            raw_response: str = await effective_client.analyze(
                 prompt=user_prompt,
                 system=SYSTEM_PROMPT,
+                json_schema=native_json_schema,
             )
         except AnalysisClientError as exc:
             logger.warning(
@@ -651,4 +683,7 @@ class DevOpsAnalyzer:
 # Module-level singleton
 # ---------------------------------------------------------------------------
 
-analyzer: DevOpsAnalyzer = DevOpsAnalyzer(client=analysis_client)
+# The singleton uses no pre-bound client so get_analysis_client() is called
+# lazily on the first analyze_scan() invocation.  This means importing this
+# module never triggers network I/O or requires ANTHROPIC_API_KEY to be set.
+analyzer: DevOpsAnalyzer = DevOpsAnalyzer()
