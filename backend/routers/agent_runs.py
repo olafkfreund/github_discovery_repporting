@@ -10,20 +10,25 @@ GET    /api/agent-runs/estimate              — Cost estimate for a scan
 GET    /api/agent-runs/{id}                  — Fetch single run (with steps/actions)
 POST   /api/agent-runs/{id}/cancel          — Request cancellation
 GET    /api/agent-runs/{id}/stream          — SSE stream of AgentStep events
+POST   /api/agent-runs/{id}/events          — Receive CI-mode step events (HMAC-signed)
 
-Issue: #27
+Issue: #27, #47
 """
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -34,6 +39,7 @@ from backend.schemas.agent_runs import (
     AgentRunListItem,
     AgentRunRead,
     AgentRunTriggerPayload,
+    AgentStepEventPayload,
     AgentStepRead,
 )
 from backend.services import agent_service
@@ -100,6 +106,61 @@ def _enum_value(v: object) -> str:
         The underlying string value.
     """
     return v.value if hasattr(v, "value") else str(v)  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# HMAC verification helper (issue #47)
+# ---------------------------------------------------------------------------
+
+
+def verify_signature(body: bytes, secret: bytes, header: str | None) -> bool:
+    """Constant-time HMAC-SHA256 verification of *body* using *secret*.
+
+    Expected header format: ``sha256=<hex_digest>``. Returns ``False`` for any
+    malformed header, missing prefix, or mismatched digest.
+
+    Args:
+        body: Raw request body bytes to authenticate.
+        secret: 32-byte HMAC key stored in :attr:`AgentRun.callback_secret`.
+        header: Value of the ``X-BPS-Signature`` request header; ``None`` if
+            the header was absent.
+
+    Returns:
+        ``True`` iff the computed digest matches the received digest using a
+        constant-time comparison.
+    """
+    if not header or not header.startswith("sha256="):
+        return False
+    expected = hmac.new(secret, body, hashlib.sha256).hexdigest()
+    received = header.removeprefix("sha256=").strip()
+    return hmac.compare_digest(expected, received)
+
+
+# ---------------------------------------------------------------------------
+# Step lookup helper (issue #47)
+# ---------------------------------------------------------------------------
+
+
+async def _get_step(
+    db: AsyncSession,
+    run_id: UUID,
+    step_index: int,
+) -> AgentStep | None:
+    """Return the existing :class:`AgentStep` for *(run_id, step_index)* or ``None``.
+
+    Args:
+        db: Active async database session.
+        run_id: UUID of the owning :class:`AgentRun`.
+        step_index: Zero-based step counter to look up.
+
+    Returns:
+        The matching :class:`AgentStep` row or ``None`` if not present.
+    """
+    stmt = select(AgentStep).where(
+        AgentStep.agent_run_id == run_id,
+        AgentStep.step_index == step_index,
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +416,129 @@ async def cancel(
     result = (await db.execute(stmt)).scalar_one()
     result.steps.sort(key=lambda s: s.step_index)
     return result
+
+
+# ---------------------------------------------------------------------------
+# POST /api/agent-runs/{id}/events — CI-mode runner webhook (issue #47)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/agent-runs/{id}/events",
+    response_model=AgentStepRead,
+    status_code=status.HTTP_200_OK,
+    summary="Receive a HMAC-signed CI-mode agent step event",
+)
+async def receive_event(
+    id: UUID,
+    request: Request,
+    x_bps_signature: str | None = Header(default=None, alias="X-BPS-Signature"),
+    db: AsyncSession = Depends(get_db),
+) -> AgentStep:
+    """Receive a CI-mode agent step event.
+
+    Body: :class:`~backend.schemas.agent_runs.AgentStepEventPayload` (JSON).
+    Signature header: ``X-BPS-Signature: sha256=<hex_hmac_of_body>``.
+
+    Idempotency: if a row with ``(agent_run_id, step_index)`` already exists,
+    returns the existing row with 200.  Use this for at-least-once webhook
+    retries from the CI runner.
+
+    On commit races (concurrent duplicate POSTs that slip past the pre-check),
+    the ``uq_agent_steps_run_index`` DB constraint raises
+    :class:`~sqlalchemy.exc.IntegrityError`; the handler rolls back, re-reads
+    the existing row, and returns it with 200.
+
+    Args:
+        id: UUID of the target :class:`~backend.models.agent_runs.AgentRun`.
+        request: Raw FastAPI request; the full body is read for HMAC verification.
+        x_bps_signature: Value of the ``X-BPS-Signature`` header; ``None`` if absent.
+        db: Injected async database session.
+
+    Returns:
+        The newly created or already-existing
+        :class:`~backend.models.agent_runs.AgentStep` row.
+
+    Raises:
+        HTTPException: 404 when no run with *id* exists.
+        HTTPException: 401 when the HMAC signature is absent or invalid.
+        HTTPException: 500 when a commit race cannot be resolved (should not
+            occur in normal operation).
+    """
+    body_bytes = await request.body()
+    run = await db.get(AgentRun, id)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"AgentRun {id} not found",
+        )
+    if not verify_signature(body_bytes, run.callback_secret, x_bps_signature):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid signature",
+        )
+
+    try:
+        payload = AgentStepEventPayload.model_validate_json(body_bytes)
+    except PydanticValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.errors(include_url=False),
+        ) from exc
+
+    # Idempotency: return existing row without re-inserting.
+    existing = await _get_step(db, id, payload.step_index)
+    if existing is not None:
+        return existing
+
+    step = AgentStep(
+        agent_run_id=id,
+        step_index=payload.step_index,
+        step_type=payload.step_type,
+        prompt_hash=payload.prompt_hash,
+        tool_name=payload.tool_name,
+        tool_args_redacted=payload.tool_args_redacted,
+        tool_result_redacted=payload.tool_result_redacted,
+        input_tokens=payload.input_tokens,
+        output_tokens=payload.output_tokens,
+        latency_ms=payload.latency_ms,
+        status=payload.status,
+    )
+    db.add(step)
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Race: a concurrent retry inserted the same step_index between our
+        # pre-check and this insert.  Roll back and re-read.
+        await db.rollback()
+        existing = await _get_step(db, id, payload.step_index)
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Step insert race; please retry",
+            ) from None
+        return existing
+    await db.refresh(step)
+
+    # Publish to the SSE event bus for live consumers.
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        id,
+        {
+            "step_index": payload.step_index,
+            "step_type": _enum_value(payload.step_type),
+            "tool_name": payload.tool_name,
+            "tool_args_redacted": payload.tool_args_redacted,
+            "tool_result_redacted": payload.tool_result_redacted,
+            "input_tokens": payload.input_tokens,
+            "output_tokens": payload.output_tokens,
+            "latency_ms": payload.latency_ms,
+            "status": payload.status,
+            "created_at": step.created_at.isoformat() if step.created_at is not None else None,
+        },
+    )
+
+    return step
 
 
 # ---------------------------------------------------------------------------
