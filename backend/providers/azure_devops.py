@@ -13,12 +13,16 @@ import yaml
 from backend.models.enums import Platform
 from backend.schemas.platform_data import (
     BranchProtection,
+    BranchProtectionRules,
     CIWorkflow,
+    FileChange,
     NormalizedRepo,
     OrgAssessmentData,
     OrgMemberInfo,
     OrgSecuritySettings,
+    PRStatus,
     PullRequestInfo,
+    PullRequestRef,
     RepoAssessmentData,
     SecurityFeatures,
     WorkflowRun,
@@ -985,6 +989,70 @@ class AzureDevOpsProvider:
             )
 
         return prs
+
+    # ---------------------------------------------------------------------------
+    # Write operations (Phase 2 — stubs, see follow-up issue #16)
+    # ---------------------------------------------------------------------------
+
+    async def create_branch(
+        self,
+        repo: NormalizedRepo,
+        branch: str,
+        from_sha: str,
+    ) -> None:
+        """Create a branch — TO BE IMPLEMENTED in issue #16."""
+        raise NotImplementedError(
+            f"{type(self).__name__}.create_branch is not yet implemented (issue #16)"
+        )
+
+    async def commit_files(
+        self,
+        repo: NormalizedRepo,
+        branch: str,
+        files: list[FileChange],
+        message: str,
+        author_name: str | None = None,
+        author_email: str | None = None,
+    ) -> str:
+        """Commit files — TO BE IMPLEMENTED in issue #16."""
+        raise NotImplementedError(
+            f"{type(self).__name__}.commit_files is not yet implemented (issue #16)"
+        )
+
+    async def create_pull_request(
+        self,
+        repo: NormalizedRepo,
+        head: str,
+        base: str,
+        title: str,
+        body: str,
+        draft: bool = True,
+    ) -> PullRequestRef:
+        """Open a PR — TO BE IMPLEMENTED in issue #16."""
+        raise NotImplementedError(
+            f"{type(self).__name__}.create_pull_request is not yet implemented (issue #16)"
+        )
+
+    async def get_pr_status(
+        self,
+        repo: NormalizedRepo,
+        pr_number: int,
+    ) -> PRStatus:
+        """Fetch PR status — TO BE IMPLEMENTED in issue #16."""
+        raise NotImplementedError(
+            f"{type(self).__name__}.get_pr_status is not yet implemented (issue #16)"
+        )
+
+    async def set_branch_protection(
+        self,
+        repo: NormalizedRepo,
+        branch: str,
+        rules: BranchProtectionRules,
+    ) -> None:
+        """Apply branch protection — TO BE IMPLEMENTED in issue #16."""
+        raise NotImplementedError(
+            f"{type(self).__name__}.set_branch_protection is not yet implemented (issue #16)"
+        )
 
 
 # ---------------------------------------------------------------------------
