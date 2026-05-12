@@ -37,6 +37,7 @@ import type {
 } from '../types/llm'
 import type {
   AgentRun,
+  AgentRunDetailed,
   AgentRunCostEstimate,
   AgentRunTriggerPayload,
   RemediationPolicy,
@@ -323,4 +324,10 @@ export const api = {
     const qs = params.toString()
     return request<AgentRun[]>(`/agent-runs${qs ? `?${qs}` : ''}`)
   },
+
+  getAgentRun: (id: string): Promise<AgentRunDetailed> =>
+    request<AgentRunDetailed>(`/agent-runs/${id}`),
+
+  cancelAgentRun: (id: string): Promise<AgentRun> =>
+    request<AgentRun>(`/agent-runs/${id}/cancel`, { method: 'POST' }),
 }
