@@ -148,3 +148,69 @@ async def test_agent_instructions_customer_relationship(db_session: AsyncSession
     assert ai.id == row.id
     assert ai.customer_id == customer.id
     assert ai.content == "Relationship check"
+
+
+# ---------------------------------------------------------------------------
+# profile_slug column
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_agent_instructions_profile_slug_persists(db_session: AsyncSession) -> None:
+    """AgentInstructions created with profile_slug='standard' persists correctly."""
+    customer = await _make_customer(db_session)
+    row = AgentInstructions(
+        customer_id=customer.id,
+        content="Instructions with profile",
+        enabled=True,
+        profile_slug="standard",
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    result = await db_session.execute(
+        select(AgentInstructions).where(AgentInstructions.id == row.id)
+    )
+    reloaded = result.scalar_one_or_none()
+    assert reloaded is not None
+    assert reloaded.profile_slug == "standard"
+
+
+@pytest.mark.asyncio
+async def test_agent_instructions_profile_slug_update(db_session: AsyncSession) -> None:
+    """Updating profile_slug from 'standard' to 'banking' persists correctly."""
+    customer = await _make_customer(db_session)
+    row = AgentInstructions(
+        customer_id=customer.id,
+        content="Instructions with profile",
+        enabled=True,
+        profile_slug="standard",
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    # Update to 'banking'.
+    row.profile_slug = "banking"
+    await db_session.commit()
+
+    result = await db_session.execute(
+        select(AgentInstructions).where(AgentInstructions.id == row.id)
+    )
+    reloaded = result.scalar_one_or_none()
+    assert reloaded is not None
+    assert reloaded.profile_slug == "banking"
+
+
+@pytest.mark.asyncio
+async def test_agent_instructions_profile_slug_defaults_to_none(db_session: AsyncSession) -> None:
+    """AgentInstructions created without profile_slug has None by default."""
+    customer = await _make_customer(db_session)
+    row = await _make_ai(db_session, customer.id)
+    await db_session.commit()
+
+    result = await db_session.execute(
+        select(AgentInstructions).where(AgentInstructions.id == row.id)
+    )
+    reloaded = result.scalar_one_or_none()
+    assert reloaded is not None
+    assert reloaded.profile_slug is None

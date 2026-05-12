@@ -28,6 +28,16 @@ class AgentInstructionsBase(BaseModel):
             "Use this to temporarily disable instructions without losing content."
         ),
     )
+    profile_slug: str | None = Field(
+        None,
+        max_length=64,
+        description=(
+            "Slug of the built-in AGENTS.md profile selected for this customer "
+            "(e.g. 'standard', 'banking', 'public-sector', 'strict'). "
+            "Null when no profile has been selected or when the customer uses "
+            "fully custom instructions."
+        ),
+    )
 
 
 class AgentInstructionsUpsertPayload(AgentInstructionsBase):
