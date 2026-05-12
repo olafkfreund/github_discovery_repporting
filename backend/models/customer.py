@@ -12,6 +12,7 @@ from backend.models.base import Base, TimestampMixin, UUIDMixin
 from backend.models.enums import AuthType, Platform
 
 if TYPE_CHECKING:
+    from backend.models.llm import LLMConnection
     from backend.models.scan import Scan
     from backend.models.scan_profile import ScanProfile
 
@@ -41,6 +42,12 @@ class Customer(UUIDMixin, TimestampMixin, Base):
     )
     scan_profiles: Mapped[list[ScanProfile]] = relationship(
         "ScanProfile",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    llm_connections: Mapped[list[LLMConnection]] = relationship(
+        "LLMConnection",
         back_populates="customer",
         cascade="all, delete-orphan",
         lazy="selectin",

@@ -12,12 +12,14 @@ from backend.models.enums import (
     AuthType,
     Category,
     CheckStatus,
+    LLMProviderEnum,
     Platform,
     ReportStatus,
     ScanStatus,
     Severity,
 )
 from backend.models.finding import Finding, ScanScore
+from backend.models.llm import LLMConnection
 from backend.models.report import Report, ReportTemplate
 from backend.models.requirement import CustomRequirement, RequirementResult
 from backend.models.scan import Scan, ScanRepo
@@ -32,6 +34,7 @@ __all__ = [
     "AuthType",
     "Category",
     "CheckStatus",
+    "LLMProviderEnum",
     "Platform",
     "ReportStatus",
     "ScanStatus",
@@ -40,6 +43,7 @@ __all__ = [
     "Customer",
     "CustomRequirement",
     "Finding",
+    "LLMConnection",
     "PlatformConnection",
     "Report",
     "ReportTemplate",
