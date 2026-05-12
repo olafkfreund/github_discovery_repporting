@@ -106,7 +106,7 @@ def sample_report_data() -> dict:
                 "effort": "Low",
                 "impact": "High",
                 "description": "Enable mandatory MFA at the organisation level.",
-                "related_check_ids": ["IAM-003"],
+                "check_ids": ["IAM-003"],
             },
             {
                 "priority": "High",
@@ -115,7 +115,7 @@ def sample_report_data() -> dict:
                 "effort": "Medium",
                 "impact": "High",
                 "description": "Enable GitHub Advanced Security secret scanning.",
-                "related_check_ids": ["SEC-001", "SEC-002"],
+                "check_ids": ["SEC-001", "SEC-002"],
             },
         ],
         # --- Benchmarks ---
@@ -148,9 +148,7 @@ def sample_report_data() -> dict:
 class TestExcelRenderer:
     """Unit tests for :class:`~backend.reports.excel.ExcelRenderer`."""
 
-    def test_generate_excel_creates_file(
-        self, tmp_path: Path, sample_report_data: dict
-    ) -> None:
+    def test_generate_excel_creates_file(self, tmp_path: Path, sample_report_data: dict) -> None:
         """generate_excel() must write a file at the requested output_path."""
         output = tmp_path / "report.xlsx"
         renderer = ExcelRenderer()
@@ -161,9 +159,7 @@ class TestExcelRenderer:
         assert output.exists()
         assert output.suffix == ".xlsx"
 
-    def test_generate_excel_has_six_sheets(
-        self, tmp_path: Path, sample_report_data: dict
-    ) -> None:
+    def test_generate_excel_has_six_sheets(self, tmp_path: Path, sample_report_data: dict) -> None:
         """The generated workbook must contain exactly six sheets."""
         output = tmp_path / "report.xlsx"
         ExcelRenderer().generate_excel(sample_report_data, output)
@@ -171,9 +167,7 @@ class TestExcelRenderer:
         wb = load_workbook(output)
         assert len(wb.sheetnames) == 6
 
-    def test_generate_excel_sheet_names(
-        self, tmp_path: Path, sample_report_data: dict
-    ) -> None:
+    def test_generate_excel_sheet_names(self, tmp_path: Path, sample_report_data: dict) -> None:
         """The six sheets must use the expected tab names in order."""
         output = tmp_path / "report.xlsx"
         ExcelRenderer().generate_excel(sample_report_data, output)
@@ -401,9 +395,7 @@ class TestMarkdownRenderer:
         assert "Enforce MFA Across All Members" in content
         assert "Add Secrets Scanning Baseline" in content
 
-    def test_markdown_escapes_pipes_in_cells(
-        self, tmp_path: Path
-    ) -> None:
+    def test_markdown_escapes_pipes_in_cells(self, tmp_path: Path) -> None:
         """Pipe characters inside cell values must be escaped as '\\|'."""
         data: dict = {
             "report_title": "Test",
@@ -416,9 +408,7 @@ class TestMarkdownRenderer:
             "overall_score": 0.0,
             "dora_level": "Low",
             "category_scores": {"A|B": 50.0},
-            "category_narratives": [
-                {"category": "A|B", "strengths": [], "weaknesses": []}
-            ],
+            "category_narratives": [{"category": "A|B", "strengths": [], "weaknesses": []}],
             "executive_summary": "summary",
             "overall_maturity": "low",
             "risk_highlights": [],
@@ -430,7 +420,7 @@ class TestMarkdownRenderer:
                     "effort": "Low",
                     "impact": "High",
                     "description": "desc",
-                    "related_check_ids": [],
+                    "check_ids": [],
                 }
             ],
             "benchmark_comparisons": [],

@@ -152,7 +152,7 @@ class ExcelRenderer:
             ws.cell(row=row, column=4, value=rec.get("effort", ""))
             ws.cell(row=row, column=5, value=rec.get("impact", ""))
             ws.cell(row=row, column=6, value=rec.get("description", "")).alignment = _WRAP
-            check_ids = rec.get("related_check_ids", [])
+            check_ids = rec.get("check_ids", [])
             ws.cell(row=row, column=7, value=", ".join(check_ids) if check_ids else "")
             row += 1
 

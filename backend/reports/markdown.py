@@ -25,7 +25,7 @@ def _md_table(headers: list[str], rows: list[list[str]], align: list[str] | None
     ]
     for row in rows:
         # Escape pipes in cell values
-        escaped = [cell.replace("|", "\\|").replace("\n", " ") for cell in row]
+        escaped = [str(cell).replace("|", "\\|").replace("\n", " ") for cell in row]
         lines.append("| " + " | ".join(escaped) + " |")
 
     return "\n".join(lines)
@@ -179,7 +179,7 @@ class MarkdownRenderer:
                 lines.append("")
                 lines.append(rec.get("description", ""))
                 lines.append("")
-                check_ids = rec.get("related_check_ids", [])
+                check_ids = rec.get("check_ids", [])
                 if check_ids:
                     lines.append(f"**Related Checks:** {', '.join(check_ids)}")
                     lines.append("")
