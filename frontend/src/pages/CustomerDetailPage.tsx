@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
   Customer,
@@ -10,10 +10,12 @@ import type {
   ConnectionCreatePayload,
   ConnectionUpdatePayload,
 } from '../types'
+import type { AgentRunTriggerPayload } from '../types/agents'
 import { ScanStatusBadge } from '../components/ui/ScanStatusBadge'
 import { Spinner } from '../components/ui/Spinner'
 import { ErrorPanel } from '../components/ui/ErrorPanel'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { TriggerAgentRunDialog } from '../components/agents/TriggerAgentRunDialog'
 import { formatDate } from '../utils/format'
 
 const REPORT_STATUS_CLASSES: Record<string, string> = {
@@ -335,6 +337,7 @@ function EditConnectionForm({ connection, onUpdated, onCancel }: EditConnectionF
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [connections, setConnections] = useState<Connection[]>([])
   const [scans, setScans] = useState<Scan[]>([])
@@ -359,6 +362,10 @@ export default function CustomerDetailPage() {
   const [triggeringScan, setTriggeringScan] = useState(false)
 
   const [generatingReportScanId, setGeneratingReportScanId] = useState<string | null>(null)
+
+  const [triggerForScanId, setTriggerForScanId] = useState<string | null>(null)
+  const [triggerError, setTriggerError] = useState<string | null>(null)
+  const [triggering, setTriggering] = useState(false)
 
   const loadAll = useCallback(async () => {
     if (!id) return
@@ -505,6 +512,11 @@ export default function CustomerDetailPage() {
         <span className="mx-2 text-gray-400">/</span>
         <span className="text-gray-700 font-medium">{customer.name}</span>
       </nav>
+
+      {/* Agent run trigger error */}
+      {triggerError && (
+        <ErrorPanel message={triggerError} onRetry={() => setTriggerError(null)} />
+      )}
 
       {/* Customer info */}
       <div className="bg-white rounded-lg shadow p-6">
@@ -728,14 +740,30 @@ export default function CustomerDetailPage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-3">
                           {scan.status === 'completed' && (
-                            <button
-                              onClick={() => { void handleGenerateReport(scan.id) }}
-                              disabled={generatingReportScanId === scan.id}
-                              className="text-xs font-medium text-green-700 hover:text-green-800
-                                         disabled:opacity-50"
-                            >
-                              {generatingReportScanId === scan.id ? 'Generating…' : 'Generate Report'}
-                            </button>
+                            <>
+                              <button
+                                onClick={() => { void handleGenerateReport(scan.id) }}
+                                disabled={generatingReportScanId === scan.id}
+                                className="text-xs font-medium text-green-700 hover:text-green-800
+                                           disabled:opacity-50"
+                              >
+                                {generatingReportScanId === scan.id ? 'Generating…' : 'Generate Report'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setTriggerError(null); setTriggerForScanId(scan.id) }}
+                                title="Run remediation agent on this scan"
+                                aria-label="Run remediation agent on this scan"
+                                className="text-gray-500 hover:text-brand-600 disabled:opacity-50"
+                                disabled={triggering}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                     stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round"
+                                        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                                </svg>
+                              </button>
+                            </>
                           )}
                           <Link
                             to={`/scans/${scan.id}`}
@@ -835,6 +863,29 @@ export default function CustomerDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Agent run dialog */}
+      {triggerForScanId && (
+        <TriggerAgentRunDialog
+          open={true}
+          scanId={triggerForScanId}
+          customerId={customer.id}
+          onConfirm={async (payload: AgentRunTriggerPayload) => {
+            setTriggering(true)
+            setTriggerError(null)
+            try {
+              const run = await api.triggerAgentRun(triggerForScanId, payload)
+              setTriggerForScanId(null)
+              navigate(`/agents/${run.id}`)
+            } catch (err) {
+              setTriggerError(err instanceof Error ? err.message : 'Failed to trigger agent run')
+            } finally {
+              setTriggering(false)
+            }
+          }}
+          onCancel={() => setTriggerForScanId(null)}
+        />
+      )}
 
       {/* Confirm delete connection dialog */}
       <ConfirmDialog
