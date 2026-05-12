@@ -1,4 +1,5 @@
 """Tests for scan profile CRUD API endpoints."""
+
 from __future__ import annotations
 
 import pytest
@@ -75,7 +76,11 @@ class TestScanProfileCRUD:
     async def test_create_profile(self, client: AsyncClient, customer_id: str) -> None:
         resp = await client.post(
             f"/api/customers/{customer_id}/scan-profiles",
-            json={"name": "Security Focus", "description": "Strict checks", "config": SAMPLE_CONFIG},
+            json={
+                "name": "Security Focus",
+                "description": "Strict checks",
+                "config": SAMPLE_CONFIG,
+            },
         )
         assert resp.status_code == 201
         data = resp.json()

@@ -142,7 +142,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-002: Base image from trusted registry
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-002"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-002"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(
@@ -159,7 +163,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-003: Base image pinned by digest
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-003"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-003"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(
@@ -176,7 +184,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-004: Multi-stage build used
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-004"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-004"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(
@@ -193,7 +205,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-005: No root user in container
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-005"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-005"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(
@@ -210,7 +226,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-006: Image scanning in pipeline
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-006"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-006"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(
@@ -225,7 +245,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-007: No secrets in Dockerfile
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-007"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-007"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(
@@ -242,7 +266,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-008: Health check defined
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-008"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-008"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(
@@ -259,7 +287,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-009: Read-only filesystem
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-009"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-009"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(
@@ -276,7 +308,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-010: Resource limits defined (use docker-compose as a proxy signal)
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-010"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-010"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         elif data.has_docker_compose:
             results.append(
@@ -304,7 +340,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-011: Container signing enabled
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-011"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-011"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(
@@ -321,7 +361,11 @@ class ContainerSecurityScanner(BaseScanner):
         # CNTR-012: Runtime security policy defined
         if not has_dockerfile:
             results.append(
-                CheckResult(check=self._check_map["CNTR-012"], status=CheckStatus.not_applicable, detail=_na_detail)
+                CheckResult(
+                    check=self._check_map["CNTR-012"],
+                    status=CheckStatus.not_applicable,
+                    detail=_na_detail,
+                )
             )
         else:
             results.append(

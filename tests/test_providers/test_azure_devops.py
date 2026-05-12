@@ -186,35 +186,41 @@ async def test_validate_connection_failure_network(provider: AzureDevOpsProvider
 @pytest.mark.asyncio
 async def test_list_repos_across_projects(provider: AzureDevOpsProvider) -> None:
     """list_repos discovers repos across multiple projects."""
-    projects_resp = _mock_response({
-        "value": [
-            {"name": "ProjectA"},
-            {"name": "ProjectB"},
-        ],
-        "count": 2,
-    })
-    repos_a_resp = _mock_response({
-        "value": [
-            {
-                "id": "repo-1",
-                "name": "service-api",
-                "defaultBranch": "refs/heads/main",
-                "webUrl": "https://dev.azure.com/test-org/ProjectA/_git/service-api",
-                "project": {"description": "API service"},
-            },
-        ],
-    })
-    repos_b_resp = _mock_response({
-        "value": [
-            {
-                "id": "repo-2",
-                "name": "frontend",
-                "defaultBranch": "refs/heads/develop",
-                "webUrl": "https://dev.azure.com/test-org/ProjectB/_git/frontend",
-                "project": {},
-            },
-        ],
-    })
+    projects_resp = _mock_response(
+        {
+            "value": [
+                {"name": "ProjectA"},
+                {"name": "ProjectB"},
+            ],
+            "count": 2,
+        }
+    )
+    repos_a_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "id": "repo-1",
+                    "name": "service-api",
+                    "defaultBranch": "refs/heads/main",
+                    "webUrl": "https://dev.azure.com/test-org/ProjectA/_git/service-api",
+                    "project": {"description": "API service"},
+                },
+            ],
+        }
+    )
+    repos_b_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "id": "repo-2",
+                    "name": "frontend",
+                    "defaultBranch": "refs/heads/develop",
+                    "webUrl": "https://dev.azure.com/test-org/ProjectB/_git/frontend",
+                    "project": {},
+                },
+            ],
+        }
+    )
 
     async def mock_get(url: str, **kwargs: object) -> httpx.Response:
         url_str = str(url)
@@ -248,17 +254,19 @@ async def test_list_repos_across_projects(provider: AzureDevOpsProvider) -> None
 async def test_list_repos_strips_refs_heads(provider: AzureDevOpsProvider) -> None:
     """list_repos strips 'refs/heads/' prefix from default branches."""
     projects_resp = _mock_response({"value": [{"name": "P1"}], "count": 1})
-    repos_resp = _mock_response({
-        "value": [
-            {
-                "id": "r1",
-                "name": "my-repo",
-                "defaultBranch": "refs/heads/release/v2",
-                "webUrl": "https://dev.azure.com/test-org/P1/_git/my-repo",
-                "project": {},
-            },
-        ],
-    })
+    repos_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "id": "r1",
+                    "name": "my-repo",
+                    "defaultBranch": "refs/heads/release/v2",
+                    "webUrl": "https://dev.azure.com/test-org/P1/_git/my-repo",
+                    "project": {},
+                },
+            ],
+        }
+    )
 
     async def mock_get(url: str, **kwargs: object) -> httpx.Response:
         if "/_apis/projects" in str(url):
@@ -274,23 +282,27 @@ async def test_list_repos_strips_refs_heads(provider: AzureDevOpsProvider) -> No
 @pytest.mark.asyncio
 async def test_list_repos_respects_project_visibility(provider: AzureDevOpsProvider) -> None:
     """list_repos sets is_private based on project visibility."""
-    projects_resp = _mock_response({
-        "value": [
-            {"name": "PublicProject", "visibility": "public"},
-            {"name": "PrivateProject", "visibility": "private"},
-        ],
-    })
-    repos_resp = _mock_response({
-        "value": [
-            {
-                "id": "r1",
-                "name": "repo1",
-                "defaultBranch": "refs/heads/main",
-                "webUrl": "https://dev.azure.com/test-org/X/_git/repo1",
-                "project": {},
-            },
-        ],
-    })
+    projects_resp = _mock_response(
+        {
+            "value": [
+                {"name": "PublicProject", "visibility": "public"},
+                {"name": "PrivateProject", "visibility": "private"},
+            ],
+        }
+    )
+    repos_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "id": "r1",
+                    "name": "repo1",
+                    "defaultBranch": "refs/heads/main",
+                    "webUrl": "https://dev.azure.com/test-org/X/_git/repo1",
+                    "project": {},
+                },
+            ],
+        }
+    )
 
     async def mock_get(url: str, **kwargs: object) -> httpx.Response:
         if "/_apis/projects" in str(url):
@@ -315,23 +327,25 @@ async def test_list_repos_respects_project_visibility(provider: AzureDevOpsProvi
 @pytest.mark.asyncio
 async def test_branch_protection_reviewer_policy(provider: AzureDevOpsProvider) -> None:
     """_fetch_branch_protection extracts reviewer count from branch policies."""
-    policies_resp = _mock_response({
-        "value": [
-            {
-                "isEnabled": True,
-                "type": {"displayName": "Minimum number of reviewers"},
-                "settings": {
-                    "minimumApproverCount": 2,
-                    "resetOnSourcePush": True,
+    policies_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "isEnabled": True,
+                    "type": {"displayName": "Minimum number of reviewers"},
+                    "settings": {
+                        "minimumApproverCount": 2,
+                        "resetOnSourcePush": True,
+                    },
                 },
-            },
-            {
-                "isEnabled": True,
-                "type": {"displayName": "Required reviewers"},
-                "settings": {},
-            },
-        ],
-    })
+                {
+                    "isEnabled": True,
+                    "type": {"displayName": "Required reviewers"},
+                    "settings": {},
+                },
+            ],
+        }
+    )
 
     with patch.object(provider._client, "get", AsyncMock(return_value=policies_resp)):
         result = await provider._fetch_branch_protection("Proj", "repo-1", "main")
@@ -364,15 +378,17 @@ async def test_branch_protection_no_policies(provider: AzureDevOpsProvider) -> N
 @pytest.mark.asyncio
 async def test_ci_workflows_from_definitions(provider: AzureDevOpsProvider) -> None:
     """_fetch_ci_workflows discovers build definitions and classifies intent."""
-    definitions_resp = _mock_response({
-        "value": [
-            {
-                "id": 10,
-                "name": "CI Build",
-                "process": {"yamlFilename": "azure-pipelines.yml"},
-            },
-        ],
-    })
+    definitions_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "id": 10,
+                    "name": "CI Build",
+                    "process": {"yamlFilename": "azure-pipelines.yml"},
+                },
+            ],
+        }
+    )
     yaml_content = "trigger:\n  - main\nsteps:\n  - script: pytest tests/"
     yaml_resp = _mock_response({"content": yaml_content})
     builds_resp = _mock_response({"value": []})
@@ -404,15 +420,17 @@ async def test_ci_workflows_from_definitions(provider: AzureDevOpsProvider) -> N
 @pytest.mark.asyncio
 async def test_ci_workflows_trigger_none(provider: AzureDevOpsProvider) -> None:
     """_fetch_ci_workflows treats `trigger: none` as ["none"], not ["push"]."""
-    definitions_resp = _mock_response({
-        "value": [
-            {
-                "id": 20,
-                "name": "Manual Only",
-                "process": {"yamlFilename": "manual.yml"},
-            },
-        ],
-    })
+    definitions_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "id": 20,
+                    "name": "Manual Only",
+                    "process": {"yamlFilename": "manual.yml"},
+                },
+            ],
+        }
+    )
     yaml_content = "trigger: none\nsteps:\n  - script: echo hello"
     yaml_resp = _mock_response({"content": yaml_content})
     builds_resp = _mock_response({"value": []})
@@ -439,21 +457,25 @@ async def test_ci_workflows_base64_content(provider: AzureDevOpsProvider) -> Non
     """_fetch_ci_workflows decodes base64-encoded YAML content."""
     import base64 as b64
 
-    definitions_resp = _mock_response({
-        "value": [
-            {
-                "id": 30,
-                "name": "Encoded Pipeline",
-                "process": {"yamlFilename": "ci.yml"},
-            },
-        ],
-    })
+    definitions_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "id": 30,
+                    "name": "Encoded Pipeline",
+                    "process": {"yamlFilename": "ci.yml"},
+                },
+            ],
+        }
+    )
     raw_yaml = "trigger:\n  - main\nsteps:\n  - script: ruff check"
     encoded = b64.b64encode(raw_yaml.encode()).decode()
-    yaml_resp = _mock_response({
-        "content": encoded,
-        "contentMetadata": {"encoding": "base64"},
-    })
+    yaml_resp = _mock_response(
+        {
+            "content": encoded,
+            "contentMetadata": {"encoding": "base64"},
+        }
+    )
     builds_resp = _mock_response({"value": []})
 
     async def mock_get(url: str, **kwargs: object) -> httpx.Response:
@@ -483,16 +505,18 @@ async def test_ci_workflows_base64_content(provider: AzureDevOpsProvider) -> Non
 @pytest.mark.asyncio
 async def test_file_flags_tree_based(provider: AzureDevOpsProvider) -> None:
     """_fetch_file_flags uses tree-based bulk fetch to detect files."""
-    tree_resp = _mock_response({
-        "value": [
-            {"path": "/README.md"},
-            {"path": "/LICENSE"},
-            {"path": "/Dockerfile"},
-            {"path": "/docs/adr/001-use-postgres.md"},
-            {"path": "/.editorconfig"},
-            {"path": "/mypy.ini"},
-        ],
-    })
+    tree_resp = _mock_response(
+        {
+            "value": [
+                {"path": "/README.md"},
+                {"path": "/LICENSE"},
+                {"path": "/Dockerfile"},
+                {"path": "/docs/adr/001-use-postgres.md"},
+                {"path": "/.editorconfig"},
+                {"path": "/mypy.ini"},
+            ],
+        }
+    )
     wiki_resp = _mock_response({"value": [{"name": "ProjectWiki"}]})
     boards_resp = _mock_response({"value": [{"name": "Stories"}]})
 
@@ -550,20 +574,22 @@ async def test_file_flags_no_wiki_no_boards(provider: AzureDevOpsProvider) -> No
 @pytest.mark.asyncio
 async def test_recent_prs_with_reviewers(provider: AzureDevOpsProvider) -> None:
     """_fetch_recent_prs counts reviewers who voted (inline, no N+1)."""
-    prs_resp = _mock_response({
-        "value": [
-            {
-                "pullRequestId": 42,
-                "title": "Add auth middleware",
-                "creationDate": "2024-06-15T10:30:00Z",
-                "reviewers": [
-                    {"vote": 10, "displayName": "Alice"},
-                    {"vote": 0, "displayName": "Bot"},
-                    {"vote": -5, "displayName": "Bob"},
-                ],
-            },
-        ],
-    })
+    prs_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "pullRequestId": 42,
+                    "title": "Add auth middleware",
+                    "creationDate": "2024-06-15T10:30:00Z",
+                    "reviewers": [
+                        {"vote": 10, "displayName": "Alice"},
+                        {"vote": 0, "displayName": "Bot"},
+                        {"vote": -5, "displayName": "Bob"},
+                    ],
+                },
+            ],
+        }
+    )
 
     with patch.object(provider._client, "get", AsyncMock(return_value=prs_resp)):
         prs = await provider._fetch_recent_prs("Proj", "repo-1")
@@ -584,44 +610,54 @@ async def test_recent_prs_with_reviewers(provider: AzureDevOpsProvider) -> None:
 @pytest.mark.asyncio
 async def test_org_assessment_data(provider: AzureDevOpsProvider) -> None:
     """get_org_assessment_data collects membership stats and security policy."""
-    users_resp = _mock_response({
-        "value": [
-            {"displayName": "User1"},
-            {"displayName": "User2"},
-            {"displayName": "User3"},
-        ],
-    })
-    groups_resp = _mock_response({
-        "value": [
-            {
-                "displayName": "Project Collection Administrators",
-                "descriptor": "vssgp.admin1",
-            },
-            {"displayName": "Contributors", "descriptor": "vssgp.contrib"},
-            {
-                "displayName": "Project Administrators",
-                "descriptor": "vssgp.admin2",
-            },
-        ],
-    })
+    users_resp = _mock_response(
+        {
+            "value": [
+                {"displayName": "User1"},
+                {"displayName": "User2"},
+                {"displayName": "User3"},
+            ],
+        }
+    )
+    groups_resp = _mock_response(
+        {
+            "value": [
+                {
+                    "displayName": "Project Collection Administrators",
+                    "descriptor": "vssgp.admin1",
+                },
+                {"displayName": "Contributors", "descriptor": "vssgp.contrib"},
+                {
+                    "displayName": "Project Administrators",
+                    "descriptor": "vssgp.admin2",
+                },
+            ],
+        }
+    )
     # Admin group 1 members
-    admin1_members_resp = _mock_response({
-        "value": [
-            {"memberUrl": "https://vssps.dev.azure.com/_apis/graph/users/user1"},
-            {"memberUrl": "https://vssps.dev.azure.com/_apis/graph/users/user2"},
-        ],
-    })
+    admin1_members_resp = _mock_response(
+        {
+            "value": [
+                {"memberUrl": "https://vssps.dev.azure.com/_apis/graph/users/user1"},
+                {"memberUrl": "https://vssps.dev.azure.com/_apis/graph/users/user2"},
+            ],
+        }
+    )
     # Admin group 2 members (user2 overlaps with group 1)
-    admin2_members_resp = _mock_response({
-        "value": [
-            {"memberUrl": "https://vssps.dev.azure.com/_apis/graph/users/user2"},
-            {"memberUrl": "https://vssps.dev.azure.com/_apis/graph/users/user3"},
-        ],
-    })
+    admin2_members_resp = _mock_response(
+        {
+            "value": [
+                {"memberUrl": "https://vssps.dev.azure.com/_apis/graph/users/user2"},
+                {"memberUrl": "https://vssps.dev.azure.com/_apis/graph/users/user3"},
+            ],
+        }
+    )
     projects_resp = _mock_response({"value": [{"name": "Proj1"}]})
-    repos_resp = _mock_response({
-        "value": [{"id": "r1", "name": "repo1"}],
-    })
+    repos_resp = _mock_response(
+        {
+            "value": [{"id": "r1", "name": "repo1"}],
+        }
+    )
     security_md_resp = _mock_response({"path": "/SECURITY.md"})
 
     async def mock_get(url: str, **kwargs: object) -> httpx.Response:

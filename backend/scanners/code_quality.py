@@ -101,7 +101,9 @@ class CodeQualityScanner(BaseScanner):
                 bool(lint_workflows),
                 passed=f"{len(lint_workflows)} workflow(s) include a lint step.",
                 failed="No workflow includes a linting step.",
-                evidence={"lint_workflow_names": [w.name for w in lint_workflows]} if lint_workflows else None,
+                evidence={"lint_workflow_names": [w.name for w in lint_workflows]}
+                if lint_workflows
+                else None,
             )
         )
 
@@ -113,7 +115,9 @@ class CodeQualityScanner(BaseScanner):
                 bool(test_workflows),
                 passed=f"{len(test_workflows)} workflow(s) include a test-execution step.",
                 failed="No workflow includes a test-execution step.",
-                evidence={"test_workflow_names": [w.name for w in test_workflows]} if test_workflows else None,
+                evidence={"test_workflow_names": [w.name for w in test_workflows]}
+                if test_workflows
+                else None,
             )
         )
 

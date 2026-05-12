@@ -180,10 +180,16 @@ class SecretsMgmtScanner(BaseScanner):
         results.append(self._manual_review("SEC-004", "Custom secret scanning pattern definitions"))
 
         # SEC-005  (secrets in vault — cannot verify via standard API)
-        results.append(self._manual_review("SEC-005", "Whether runtime secrets are stored in a dedicated vault"))
+        results.append(
+            self._manual_review(
+                "SEC-005", "Whether runtime secrets are stored in a dedicated vault"
+            )
+        )
 
         # SEC-006  (environment secrets used — cannot verify via standard API)
-        results.append(self._manual_review("SEC-006", "CI/CD secret scoping to deployment environments"))
+        results.append(
+            self._manual_review("SEC-006", "CI/CD secret scoping to deployment environments")
+        )
 
         # SEC-007  (no hardcoded credentials — proxy via secret_scanning_enabled + no open alerts)
         if sec is None:

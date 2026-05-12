@@ -65,9 +65,7 @@ class PlatformConnection(UUIDMixin, TimestampMixin, Base):
     credentials_encrypted: Mapped[bytes] = mapped_column(LargeBinary)
     org_or_group: Mapped[str] = mapped_column(String)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_validated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
+    last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Relationships
     customer: Mapped[Customer] = relationship(

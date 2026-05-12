@@ -151,9 +151,7 @@ _MAX_YAML_SIZE = 1_000_000  # 1 MB
 _SAFE_ORG_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
 
 # Allowlist for Azure DevOps hostnames (cloud + legacy).
-_ALLOWED_AZURE_HOSTS = re.compile(
-    r"^(.*\.)?(dev\.azure\.com|visualstudio\.com|azure\.com)$"
-)
+_ALLOWED_AZURE_HOSTS = re.compile(r"^(.*\.)?(dev\.azure\.com|visualstudio\.com|azure\.com)$")
 
 
 class AzureDevOpsProvider:
@@ -348,9 +346,7 @@ class AzureDevOpsProvider:
                     params={"$top": str(_PAGE_SIZE), "$skip": str(skip)},
                 )
             except Exception:  # noqa: BLE001
-                logger.error(
-                    "Failed to list projects for org=%r", self._org_name, exc_info=True
-                )
+                logger.error("Failed to list projects for org=%r", self._org_name, exc_info=True)
                 break
 
             projects: list[dict[str, Any]] = data.get("value", [])
@@ -377,10 +373,10 @@ class AzureDevOpsProvider:
                     continue
 
                 for r in repo_data.get("value", []):
-                    default_branch = (r.get("defaultBranch") or "refs/heads/main")
+                    default_branch = r.get("defaultBranch") or "refs/heads/main"
                     # Strip the "refs/heads/" prefix
                     if default_branch.startswith("refs/heads/"):
-                        default_branch = default_branch[len("refs/heads/"):]
+                        default_branch = default_branch[len("refs/heads/") :]
 
                     repos.append(
                         NormalizedRepo(
@@ -618,9 +614,7 @@ class AzureDevOpsProvider:
                     required_reviews,
                     settings.get("minimumApproverCount", 0),
                 )
-                dismiss_stale = dismiss_stale or settings.get(
-                    "resetOnSourcePush", False
-                )
+                dismiss_stale = dismiss_stale or settings.get("resetOnSourcePush", False)
 
             if "required reviewers" in type_name.lower():
                 require_code_owner = True
@@ -672,9 +666,7 @@ class AzureDevOpsProvider:
                     )
                     yaml_content = item_data.get("content", "")
                     # Azure DevOps may return base64-encoded content
-                    encoding = (
-                        item_data.get("contentMetadata", {}).get("encoding", "")
-                    )
+                    encoding = item_data.get("contentMetadata", {}).get("encoding", "")
                     if encoding and "base64" in encoding.lower():
                         try:
                             yaml_content = base64.b64decode(yaml_content).decode()
@@ -914,9 +906,7 @@ class AzureDevOpsProvider:
         for flag, paths in _CANDIDATE_PATHS.items():
             for candidate in paths:
                 # Check exact match or prefix match (for directories)
-                if candidate in tree_paths or any(
-                    p.startswith(candidate) for p in tree_paths
-                ):
+                if candidate in tree_paths or any(p.startswith(candidate) for p in tree_paths):
                     flags[flag] = True
                     break
 
@@ -979,9 +969,7 @@ class AzureDevOpsProvider:
 
             # The list endpoint includes reviewers inline — no extra API call needed.
             review_count = sum(
-                1
-                for reviewer in pr.get("reviewers", [])
-                if reviewer.get("vote", 0) != 0
+                1 for reviewer in pr.get("reviewers", []) if reviewer.get("vote", 0) != 0
             )
 
             prs.append(

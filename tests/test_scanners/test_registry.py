@@ -1,4 +1,5 @@
 """Tests for the scanner registry module."""
+
 from __future__ import annotations
 
 from backend.scanners.registry import (

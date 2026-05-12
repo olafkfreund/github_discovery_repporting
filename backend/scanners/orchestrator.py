@@ -146,9 +146,7 @@ class ScanOrchestrator:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _apply_check_config(
-        self, scanner: OrgScanner | Scanner, cat_cfg: dict[str, Any]
-    ) -> None:
+    def _apply_check_config(self, scanner: OrgScanner | Scanner, cat_cfg: dict[str, Any]) -> None:
         """Inject check-level config (thresholds, disable flags) into a scanner."""
         checks_cfg: dict[str, Any] = cat_cfg.get("checks", {})
         if isinstance(scanner, BaseScanner):

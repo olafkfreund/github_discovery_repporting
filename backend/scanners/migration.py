@@ -148,9 +148,15 @@ class MigrationScanner(BaseScanner):
         results.append(self._manual_review("MIG-007", "Backwards compatibility test coverage"))
 
         # MIG-008 — Environment parity (not verifiable via standard API)
-        results.append(self._manual_review("MIG-008", "Environment parity between development, staging, and production"))
+        results.append(
+            self._manual_review(
+                "MIG-008", "Environment parity between development, staging, and production"
+            )
+        )
 
         # MIG-009 — Platform abstraction layer present (not verifiable via standard API)
-        results.append(self._manual_review("MIG-009", "The presence of a platform abstraction layer"))
+        results.append(
+            self._manual_review("MIG-009", "The presence of a platform abstraction layer")
+        )
 
         return results

@@ -99,10 +99,9 @@ def test_auto_key_generation_no_key_emits_warning(caplog: pytest.LogCaptureFixtu
         svc = SecretsService(key="")
 
     # A warning must have been emitted.
-    assert any(
-        "CREDENTIALS_ENCRYPTION_KEY" in record.message
-        for record in caplog.records
-    ), "Expected a warning about missing CREDENTIALS_ENCRYPTION_KEY"
+    assert any("CREDENTIALS_ENCRYPTION_KEY" in record.message for record in caplog.records), (
+        "Expected a warning about missing CREDENTIALS_ENCRYPTION_KEY"
+    )
 
     # The service is still functional despite having no configured key.
     token = svc.encrypt("works-fine")

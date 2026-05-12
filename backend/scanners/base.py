@@ -134,7 +134,9 @@ class BaseScanner:
         check = self._check_map[check_id]
         status = CheckStatus.passed if condition else CheckStatus.failed
         detail = passed if condition else failed
-        return CheckResult(check=check, status=status, detail=detail, evidence=evidence if condition else None)
+        return CheckResult(
+            check=check, status=status, detail=detail, evidence=evidence if condition else None
+        )
 
     def _manual_review(self, check_id: str, subject: str) -> CheckResult:
         """Return a ``warning`` :class:`CheckResult` recommending manual review.

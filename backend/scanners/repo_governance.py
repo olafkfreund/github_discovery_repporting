@@ -307,9 +307,15 @@ class RepoGovernanceScanner(BaseScanner):
         results.append(self._manual_review("REPO-010", "Tag protection rule configuration"))
 
         # REPO-011  (auto-delete head branches — cannot verify via standard API)
-        results.append(self._manual_review("REPO-011", "Automatic head-branch deletion after merge"))
+        results.append(
+            self._manual_review("REPO-011", "Automatic head-branch deletion after merge")
+        )
 
         # REPO-012  (merge strategy restricted — cannot verify via standard API)
-        results.append(self._manual_review("REPO-012", "Allowed merge strategies (merge commit, squash, rebase)"))
+        results.append(
+            self._manual_review(
+                "REPO-012", "Allowed merge strategies (merge commit, squash, rebase)"
+            )
+        )
 
         return results

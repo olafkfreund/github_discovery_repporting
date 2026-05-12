@@ -100,10 +100,7 @@ async def trigger_scan(
     if connection is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"Connection {payload.connection_id} not found "
-                f"for customer {customer_id}."
-            ),
+            detail=(f"Connection {payload.connection_id} not found for customer {customer_id}."),
         )
 
     # If a profile is specified, load it and snapshot its config.
@@ -171,9 +168,7 @@ async def list_customer_scans(
         )
 
     result = await db.execute(
-        select(Scan)
-        .where(Scan.customer_id == customer_id)
-        .order_by(Scan.created_at.desc())
+        select(Scan).where(Scan.customer_id == customer_id).order_by(Scan.created_at.desc())
     )
     scans = list(result.scalars().all())
     return [ScanResponse.model_validate(s) for s in scans]
@@ -275,9 +270,7 @@ async def list_scan_scores(
     await _get_scan_or_404(db, scan_id)
 
     result = await db.execute(
-        select(ScanScore)
-        .where(ScanScore.scan_id == scan_id)
-        .order_by(ScanScore.category)
+        select(ScanScore).where(ScanScore.scan_id == scan_id).order_by(ScanScore.category)
     )
     scores = list(result.scalars().all())
     return [ScanScoreResponse.model_validate(s) for s in scores]

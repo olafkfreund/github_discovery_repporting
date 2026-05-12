@@ -170,7 +170,11 @@ class SASTScanner(BaseScanner):
         results.append(self._manual_review("SAST-006", "Custom SAST rule definitions"))
 
         # SAST-007: SAST results block merge on critical (cannot verify directly via API)
-        results.append(self._manual_review("SAST-007", "Whether SAST results are configured as required status checks"))
+        results.append(
+            self._manual_review(
+                "SAST-007", "Whether SAST results are configured as required status checks"
+            )
+        )
 
         # SAST-008: Incremental scanning enabled (cannot verify directly via API)
         results.append(self._manual_review("SAST-008", "Incremental SAST scanning configuration"))

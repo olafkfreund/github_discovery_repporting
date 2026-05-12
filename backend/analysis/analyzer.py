@@ -149,9 +149,7 @@ class DevOpsAnalyzer:
         ctx = get_platform_context(platform)
         platform_context_block: str = PLATFORM_CONTEXT_TEMPLATE.format(
             **ctx,
-            best_practices_list="\n".join(
-                f"- {bp}" for bp in ctx["best_practices_references"]
-            ),
+            best_practices_list="\n".join(f"- {bp}" for bp in ctx["best_practices_references"]),
         )
 
         user_prompt: str = USER_PROMPT_TEMPLATE.format(

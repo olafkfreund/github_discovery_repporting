@@ -369,7 +369,9 @@ class CICDScanner(BaseScanner):
                 )
             )
         else:
-            avg_seconds = sum(r.duration_seconds for r in timed_runs if r.duration_seconds is not None) / len(timed_runs)
+            avg_seconds = sum(
+                r.duration_seconds for r in timed_runs if r.duration_seconds is not None
+            ) / len(timed_runs)
             avg_minutes = round(avg_seconds / 60, 1)
             evidence = {
                 "average_duration_seconds": round(avg_seconds, 1),

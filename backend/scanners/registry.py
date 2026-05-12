@@ -5,6 +5,7 @@ configurable thresholds.  The ``get_scanner_registry()`` function
 instantiates ``ScanOrchestrator``, iterates every scanner, and returns
 structured metadata suitable for the API and frontend profile editor.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -104,7 +105,9 @@ def _build_check_info(check: ScanCheck) -> CheckInfo:
     return CheckInfo(
         check_id=check.check_id,
         check_name=check.check_name,
-        severity=check.severity.value if isinstance(check.severity, Severity) else str(check.severity),
+        severity=check.severity.value
+        if isinstance(check.severity, Severity)
+        else str(check.severity),
         weight=check.weight,
         description=check.description,
         thresholds=thresholds,

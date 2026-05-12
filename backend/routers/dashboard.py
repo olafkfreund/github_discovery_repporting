@@ -49,9 +49,7 @@ async def get_stats(
     # (SQLAlchemy async sessions are not thread-safe for true concurrency, so
     # we issue them sequentially but keep the code clean.)
 
-    total_customers_result = await db.execute(
-        select(func.count()).select_from(Customer)
-    )
+    total_customers_result = await db.execute(select(func.count()).select_from(Customer))
     total_customers: int = total_customers_result.scalar_one()
 
     total_scans_result = await db.execute(select(func.count()).select_from(Scan))
@@ -62,9 +60,7 @@ async def get_stats(
 
     cutoff = datetime.now(tz=UTC) - timedelta(days=_RECENT_DAYS)
     recent_scan_result = await db.execute(
-        select(func.count())
-        .select_from(Scan)
-        .where(Scan.created_at >= cutoff)
+        select(func.count()).select_from(Scan).where(Scan.created_at >= cutoff)
     )
     recent_scan_count: int = recent_scan_result.scalar_one()
 
@@ -93,9 +89,7 @@ async def get_recent_scans(
         Up to 10 scan records ordered newest first.
     """
     result = await db.execute(
-        select(Scan)
-        .order_by(Scan.created_at.desc())
-        .limit(_RECENT_SCANS_LIMIT)
+        select(Scan).order_by(Scan.created_at.desc()).limit(_RECENT_SCANS_LIMIT)
     )
     scans = list(result.scalars().all())
     return [ScanResponse.model_validate(s) for s in scans]

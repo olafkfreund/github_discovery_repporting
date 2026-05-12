@@ -85,9 +85,7 @@ async def get_customers(
     Returns:
         A list of ``Customer`` ORM instances, possibly empty.
     """
-    result = await db.execute(
-        select(Customer).order_by(Customer.name).offset(skip).limit(limit)
-    )
+    result = await db.execute(select(Customer).order_by(Customer.name).offset(skip).limit(limit))
     return list(result.scalars().all())
 
 
@@ -230,9 +228,7 @@ async def get_connections(
         A list of ``PlatformConnection`` ORM instances, possibly empty.
     """
     result = await db.execute(
-        select(PlatformConnection).where(
-            PlatformConnection.customer_id == customer_id
-        )
+        select(PlatformConnection).where(PlatformConnection.customer_id == customer_id)
     )
     return list(result.scalars().all())
 

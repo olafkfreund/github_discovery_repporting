@@ -261,7 +261,9 @@ class IdentityAccessScanner(BaseScanner):
         results.append(self._manual_review("IAM-008", "RBAC role scoping"))
 
         # IAM-009  (team-based access — cannot verify via standard API)
-        results.append(self._manual_review("IAM-009", "Whether access is granted via teams or individuals"))
+        results.append(
+            self._manual_review("IAM-009", "Whether access is granted via teams or individuals")
+        )
 
         # IAM-010  (inactive users reviewed — cannot verify via standard API)
         results.append(self._manual_review("IAM-010", "User activity data"))
@@ -300,6 +302,10 @@ class IdentityAccessScanner(BaseScanner):
                 )
 
         # IAM-012  (emergency access procedure — cannot verify via standard API)
-        results.append(self._manual_review("IAM-012", "The existence of a documented emergency (break-glass) access procedure"))
+        results.append(
+            self._manual_review(
+                "IAM-012", "The existence of a documented emergency (break-glass) access procedure"
+            )
+        )
 
         return results
