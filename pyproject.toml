@@ -40,6 +40,8 @@ packages = ["backend"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "backend/skills/library" = "backend/skills/library"
+"backend/agent_profiles" = "backend/agent_profiles"
+"backend/model_cards" = "backend/model_cards"
 
 [build-system]
 requires = ["hatchling"]
