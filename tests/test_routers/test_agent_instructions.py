@@ -203,3 +203,70 @@ async def test_double_delete_second_returns_404(client: AsyncClient) -> None:
 
     second_del = await client.delete(base_url)
     assert second_del.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# profile_slug round-trip
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_put_with_profile_slug_round_trips(client: AsyncClient) -> None:
+    """PUT with profile_slug field stores and returns the value via GET."""
+    customer = await _create_customer(client)
+    base_url = f"/api/customers/{customer['id']}/agent-instructions"
+
+    resp = await client.put(
+        base_url,
+        json={"content": SAMPLE_CONTENT, "enabled": True, "profile_slug": "standard"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["profile_slug"] == "standard"
+
+    # Verify GET returns the same value.
+    get_resp = await client.get(base_url)
+    assert get_resp.status_code == 200
+    assert get_resp.json()["profile_slug"] == "standard"
+
+
+@pytest.mark.asyncio
+async def test_put_with_null_profile_slug_round_trips(client: AsyncClient) -> None:
+    """PUT with profile_slug=null stores null and GET returns null."""
+    customer = await _create_customer(client)
+    base_url = f"/api/customers/{customer['id']}/agent-instructions"
+
+    # First set a slug.
+    await client.put(
+        base_url,
+        json={"content": SAMPLE_CONTENT, "profile_slug": "banking"},
+    )
+
+    # Now clear it.
+    resp = await client.put(
+        base_url,
+        json={"content": SAMPLE_CONTENT, "profile_slug": None},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["profile_slug"] is None
+
+    # Verify GET also returns null.
+    get_resp = await client.get(base_url)
+    assert get_resp.status_code == 200
+    assert get_resp.json()["profile_slug"] is None
+
+
+@pytest.mark.asyncio
+async def test_put_without_profile_slug_defaults_to_null(client: AsyncClient) -> None:
+    """PUT without profile_slug key returns profile_slug=null in the response."""
+    customer = await _create_customer(client)
+    base_url = f"/api/customers/{customer['id']}/agent-instructions"
+
+    resp = await client.put(
+        base_url,
+        json={"content": SAMPLE_CONTENT},
+    )
+    assert resp.status_code == 200, resp.text
+    # profile_slug should be null when not supplied.
+    assert resp.json()["profile_slug"] is None
