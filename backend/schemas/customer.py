@@ -107,6 +107,7 @@ class ConnectionResponse(BaseModel):
     last_validated_at: datetime | None
     has_write_scope: bool | None = None
     agent_instructions_override: str | None = None
+    skills_override: dict[str, bool] | None = None
     created_at: datetime
     updated_at: datetime
 
