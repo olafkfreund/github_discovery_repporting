@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_SCANS: int = 3
     MAX_CONCURRENT_REPORTS: int = 5
     MAX_CONCURRENT_AGENT_RUNS: int = 2
+    SKILL_PROMPT_BUDGET_BYTES: int = 8192
     AGENT_FEATURE_ENABLED: bool = True
 
     model_config = SettingsConfigDict(

@@ -35,6 +35,7 @@ Only when *none* of these files exist does the runner prepend the resolved
 system prompt.  This avoids overriding the repository's own AI instructions.
 """
 
+import hashlib
 import json
 import logging
 from collections.abc import Awaitable, Callable
@@ -58,6 +59,7 @@ from backend.agents.prompts import load_prompt
 from backend.agents.redactor import redact, redact_mapping
 from backend.agents.tools import get_tool_registry
 from backend.agents.workspace import WorkspaceError, open_workspace
+from backend.config import settings
 from backend.llm.base import LLMProvider
 from backend.llm.factory import get_llm_provider
 from backend.models.agent_runs import AgentRun, AgentStep, RemediationAction
@@ -70,9 +72,10 @@ from backend.providers.factory import create_provider
 from backend.remediation.recipe import ProviderCtx, RemediationRecipe
 from backend.remediation.registry import get_recipe
 from backend.schemas.platform_data import NormalizedRepo
-from backend.services import agent_instructions_service
+from backend.services import agent_instructions_service, skill_service
 from backend.services.event_bus import get_cancel_registry, get_event_bus
 from backend.services.llm_connection_service import to_provider_config
+from backend.services.skill_service import ResolvedSkill
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +93,53 @@ _PROBE_PATHS = [
 
 # Default PR cap per run when no remediation policy is present.
 _DEFAULT_MAX_PRS = 10
+
+
+# ---------------------------------------------------------------------------
+# Skill block formatting
+# ---------------------------------------------------------------------------
+
+
+def _format_skill_block(skills: list[ResolvedSkill], budget_bytes: int) -> str:
+    """Concatenate skill bodies into a system-prompt block, respecting *budget_bytes*.
+
+    Returns ``""`` if *skills* is empty.
+
+    Each skill is rendered as ``### <name>\\n<body>\\n\\n``.  If the total byte
+    count exceeds *budget_bytes*, skills are sorted descending by body length and
+    the longest body is truncated to ``budget_bytes // n_skills`` characters.
+    Truncated bodies have ``\\n\\n[truncated]`` appended.  All skill name headers
+    are always preserved — no skill is dropped entirely.
+
+    Args:
+        skills: Resolved skill instances to include.
+        budget_bytes: Maximum total byte budget for the returned block.
+
+    Returns:
+        A formatted multi-section markdown string, or ``""`` when *skills* is empty.
+    """
+    if not skills:
+        return ""
+
+    entries = [(s.name, s.body) for s in skills]
+    # 8 bytes of fixed overhead per entry: "### " (4) + "\\n" (1) + "\\n\\n" (2) + name varies
+    total = sum(len(name.encode()) + len(body.encode()) + 8 for name, body in entries)
+
+    if total <= budget_bytes:
+        return "\n\n".join(f"### {name}\n{body}" for name, body in entries)
+
+    # Over budget: truncate longest bodies first to a per-skill byte budget.
+    n = len(entries)
+    per_skill_budget = max(budget_bytes // n - 64, 256)
+    truncated_entries: list[tuple[str, str]] = []
+    for name, body in sorted(entries, key=lambda e: len(e[1]), reverse=True):
+        if len(body) > per_skill_budget:
+            body = body[:per_skill_budget] + "\n\n[truncated]"
+        truncated_entries.append((name, body))
+
+    # Restore deterministic name-sorted order for final output.
+    truncated_entries.sort(key=lambda e: e[0])
+    return "\n\n".join(f"### {name}\n{body}" for name, body in truncated_entries)
 
 
 # ---------------------------------------------------------------------------
@@ -712,10 +762,31 @@ async def run_backend_agent(
                     (p for p in _PROBE_PATHS if (workspace.path / p).is_file()),
                     None,
                 )
-                if existing_ai_file is None and ctx.agents_md_content:
-                    effective_system = ctx.agents_md_content + "\n\n" + system_prompt
-                else:
-                    effective_system = system_prompt
+                injected_agents_md = existing_ai_file is None and bool(ctx.agents_md_content)
+
+                # Resolve skills relevant to this check and build skill block.
+                async with db_factory() as skill_db:
+                    resolved_skills = await skill_service.resolve_for_check(
+                        skill_db, ctx.connection_id, finding.check_id
+                    )
+                skill_block = _format_skill_block(
+                    resolved_skills,
+                    budget_bytes=settings.SKILL_PROMPT_BUDGET_BYTES,
+                )
+
+                # Combined prompt_hash for audit (REQ-052): SHA256 over the
+                # operator prompt SHA concatenated with each skill's SHA.
+                combined_input = (prompt_sha + "".join(s.sha256 for s in resolved_skills)).encode()
+                combined_prompt_hash = hashlib.sha256(combined_input).hexdigest()
+
+                # Composition order: [AGENTS.md] + [system_prompt] + [Skills].
+                parts: list[str] = []
+                if injected_agents_md:
+                    parts.append(ctx.agents_md_content)  # type: ignore[arg-type]
+                parts.append(system_prompt)
+                if skill_block:
+                    parts.append("## Skills\n\n" + skill_block)
+                effective_system = "\n\n".join(parts)
 
                 tools = get_tool_registry()
 
@@ -729,7 +800,7 @@ async def run_backend_agent(
                     caps=LoopCaps(),
                     event_sink=event_sink,
                     cancel_event=cancel_event,
-                    prompt_hash=prompt_sha,
+                    prompt_hash=combined_prompt_hash,
                 )
 
         except WorkspaceError as exc:
