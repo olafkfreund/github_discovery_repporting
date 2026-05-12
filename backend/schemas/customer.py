@@ -63,7 +63,15 @@ class ConnectionCreate(BaseModel):
 
 
 class ConnectionUpdate(BaseModel):
-    """Partial payload for updating an existing platform connection."""
+    """Partial payload for updating an existing platform connection.
+
+    All fields are optional; only those present in the request body (i.e. in
+    ``model_fields_set``) are applied.  For ``agent_instructions_override``:
+    - Omitted from the payload: existing DB value is preserved.
+    - Explicitly ``null`` (JSON ``null``): the override is cleared (set to
+      ``None``), falling back to the customer-level default at resolve time.
+    - Non-empty string: replaces the stored override.
+    """
 
     display_name: str | None = None
     base_url: str | None = None
@@ -71,6 +79,7 @@ class ConnectionUpdate(BaseModel):
     credentials: str | None = None
     org_or_group: str | None = None
     is_active: bool | None = None
+    agent_instructions_override: str | None = None
 
 
 class ConnectionResponse(BaseModel):
@@ -78,6 +87,11 @@ class ConnectionResponse(BaseModel):
 
     ``credentials`` / ``credentials_encrypted`` are intentionally excluded
     from this schema to prevent credential leakage.
+
+    Attributes:
+        agent_instructions_override: Per-connection instruction override.
+            ``None`` means no override is set; the customer-level default
+            (if any) applies at agent runtime.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -92,6 +106,7 @@ class ConnectionResponse(BaseModel):
     is_active: bool
     last_validated_at: datetime | None
     has_write_scope: bool | None = None
+    agent_instructions_override: str | None = None
     created_at: datetime
     updated_at: datetime
 

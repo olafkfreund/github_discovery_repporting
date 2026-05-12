@@ -258,13 +258,20 @@ async def update_connection(
     if connection is None:
         return None
 
-    update_data = data.model_dump(exclude_none=True)
+    # Use model_fields_set so that explicitly-supplied null values (e.g.
+    # agent_instructions_override=null) are applied even though they are None,
+    # while omitted fields are silently skipped.
+    update_fields = data.model_fields_set
+    update_data = data.model_dump(include=update_fields)
 
     # Re-encrypt credentials if new plaintext was provided.
-    if "credentials" in update_data:
+    if "credentials" in update_data and update_data["credentials"] is not None:
         update_data["credentials_encrypted"] = secrets_service.encrypt(
             json.dumps({"token": update_data.pop("credentials")})
         )
+    elif "credentials" in update_data:
+        # credentials=null — drop silently (never store null as a credential).
+        update_data.pop("credentials")
 
     for field, value in update_data.items():
         setattr(connection, field, value)
