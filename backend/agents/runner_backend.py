@@ -47,6 +47,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from backend.agents.guardrail import GuardrailViolation, check_diff_scope
 from backend.agents.loop import (
     LoopBudgetExceeded,
     LoopCancelled,
@@ -749,6 +750,9 @@ async def run_backend_agent(
 
         event_sink = _make_event_sink(agent_run_id, db_factory, step_counter)
 
+        # Per-finding guardrail result; set inside the workspace block.
+        _guardrail_result: GuardrailViolation | None = None
+
         # Clone workspace.
         try:
             async with open_workspace(
@@ -803,6 +807,14 @@ async def run_backend_agent(
                     prompt_hash=combined_prompt_hash,
                 )
 
+                # Diff-scope guardrail (REQ-061) — must run while the workspace
+                # directory is still alive so git-diff can inspect the tree.
+                _guardrail_result = await check_diff_scope(
+                    workspace=workspace,
+                    recipe=recipe,
+                    finding=finding,
+                )
+
         except WorkspaceError as exc:
             logger.error(
                 "run_backend_agent: workspace error for finding %s: %s",
@@ -843,6 +855,39 @@ async def run_backend_agent(
         total_input_tokens += loop_result.total_input_tokens
         total_output_tokens += loop_result.total_output_tokens
         total_cost_usd += loop_result.total_cost_usd
+
+        # ------------------------------------------------------------------
+        # Diff-scope guardrail (REQ-061) — block PR if agent went out of scope.
+        # The workspace context has exited here; we check the diff that was
+        # accumulated inside the loop against the recipe's allowed file globs
+        # and the finding's evidence paths.
+        #
+        # NOTE: The workspace directory is cleaned up when the async-with block
+        # exits, so we cannot run git-diff here on the actual files.  Instead,
+        # the runner_backend records the workspace path via a captured reference
+        # during the loop and the guardrail is invoked while the workspace is
+        # still open (see the _guardrail_result variable set inside the block).
+        # ------------------------------------------------------------------
+        if _guardrail_result is not None:
+            logger.warning(
+                "runner_backend: diff-scope violation for finding %s: %s",
+                finding.id,
+                _guardrail_result.reason,
+            )
+            # Mark this finding's action as failed and move to the next finding.
+            async with db_factory() as fail_session:
+                action_row = RemediationAction(
+                    agent_run_id=agent_run_id,
+                    finding_id=finding.id,
+                    check_id=finding.check_id,
+                    status=RemediationActionStatus.failed,
+                    pr_url=None,
+                    branch=None,
+                    opened_at=None,
+                )
+                fail_session.add(action_row)
+                await fail_session.commit()
+            continue
 
         # Determine RemediationAction status using recipe success_check if present.
         action_status = RemediationActionStatus.in_progress

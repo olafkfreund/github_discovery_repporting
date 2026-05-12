@@ -9,13 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from backend.models.customer import PlatformConnection
+from backend.models.customer import Customer, PlatformConnection
 from backend.models.enums import ScanStatus
 from backend.models.finding import Finding, ScanScore
+from backend.models.llm import LLMConnection
 from backend.models.scan import Scan, ScanRepo
 from backend.providers.factory import create_provider
 from backend.scanners.orchestrator import ScanOrchestrator
-from backend.services import scan_enrichment_service
+from backend.services import agent_service, scan_enrichment_service
 from backend.services.task_limiter import get_scan_semaphore
 
 logger = logging.getLogger(__name__)
@@ -274,6 +275,13 @@ async def _execute_scan(scan_id: UUID, session: AsyncSession) -> None:
                 logger.debug("Failed to close provider for scan %s", scan_id)
         await session.commit()
 
+    # ------------------------------------------------------------------
+    # Auto-dispatch hook — runs AFTER the scan commit so that a failure
+    # here never rolls back or blocks the scan completion record.
+    # ------------------------------------------------------------------
+    if scan.status == ScanStatus.completed:
+        await _maybe_dispatch_agent_run(session, scan)
+
 
 async def _limited_run_scan(scan_id: UUID, db_factory: async_sessionmaker) -> None:
     """Acquire the scan semaphore slot, run the scan, then release the slot.
@@ -289,6 +297,122 @@ async def _limited_run_scan(scan_id: UUID, db_factory: async_sessionmaker) -> No
     """
     async with get_scan_semaphore():
         await run_scan(scan_id, db_factory)
+
+
+async def _pick_default_llm_connection(
+    session: AsyncSession, customer_id: UUID
+) -> LLMConnection | None:
+    """Return the customer's default LLM connection, or any connection if none is default.
+
+    Reuses the same lookup pattern as ``agent_service.estimate_run_cost``.
+
+    Args:
+        session: Active async database session.
+        customer_id: UUID of the customer to query.
+
+    Returns:
+        A :class:`~backend.models.llm.LLMConnection` row, or ``None`` when the
+        customer has no LLM connections configured.
+    """
+    llm_result = await session.execute(
+        select(LLMConnection).where(
+            LLMConnection.customer_id == customer_id,
+            LLMConnection.is_default.is_(True),
+        )
+    )
+    conn = llm_result.scalar_one_or_none()
+    if conn is not None:
+        return conn
+    # Fall back to any connection for this customer.
+    any_result = await session.execute(
+        select(LLMConnection).where(LLMConnection.customer_id == customer_id)
+    )
+    return any_result.scalar_one_or_none()
+
+
+async def _maybe_dispatch_agent_run(session: AsyncSession, scan: Scan) -> None:
+    """Optionally schedule an :class:`~backend.models.agent_runs.AgentRun` after scan completion.
+
+    Checks whether the customer has opted into auto-dispatch via
+    ``RemediationPolicy.auto_dispatch``.  Because the ``RemediationPolicy``
+    model lands in Phase 4 (epic #5) and does NOT exist on the schema yet,
+    all policy attribute access is performed defensively via :func:`getattr`
+    so that this function degrades gracefully to a no-op until the model is
+    added.
+
+    The hook:
+
+    1. Loads the customer row.
+    2. Reads ``customer.remediation_policy.auto_dispatch`` via ``getattr``
+       (defaults to ``False`` when the attribute / row is absent).
+    3. Short-circuits if ``auto_dispatch`` is ``False`` or ``kill_switch_enabled``
+       is ``True``.
+    4. Picks the customer's default LLM connection; logs and returns when none
+       is found.
+    5. Calls :func:`~backend.services.agent_service.create_agent_run` and
+       :func:`~backend.services.agent_service.trigger_backend_run`.
+
+    Any exception raised inside this function is caught and logged; it NEVER
+    propagates so that scan completion is always recorded independently of
+    agent scheduling failures.
+
+    Args:
+        session: The session that was used to commit the scan; it may still be
+            used for additional queries (its transaction is already closed by
+            the outer ``finally`` block, but the connection remains open for
+            new operations).
+        scan: The :class:`~backend.models.scan.Scan` that just completed.
+    """
+    from backend.database import AsyncSessionLocal  # noqa: PLC0415 — avoid import cycle
+
+    try:
+        customer = await session.get(Customer, scan.customer_id)
+        if customer is None:
+            return
+
+        # Phase-4 RemediationPolicy not yet on the schema — defensive getattr.
+        # When the model lands, these attributes will resolve naturally.
+        remediation_policy = getattr(customer, "remediation_policy", None)
+        auto_dispatch = bool(getattr(remediation_policy, "auto_dispatch", False))
+        kill_switch = bool(getattr(remediation_policy, "kill_switch_enabled", False))
+
+        if not auto_dispatch:
+            return
+
+        if kill_switch:
+            logger.info(
+                "scan_service: auto-dispatch skipped for scan %s (kill switch active)",
+                scan.id,
+            )
+            return
+
+        llm_conn = await _pick_default_llm_connection(session, customer.id)
+        if llm_conn is None:
+            logger.warning(
+                "scan_service: auto-dispatch skipped for scan %s — no LLMConnection configured",
+                scan.id,
+            )
+            return
+
+        # Open a fresh session for create_agent_run so the scan session's
+        # state does not leak into the new transaction.
+        async with AsyncSessionLocal() as dispatch_session:
+            agent_run = await agent_service.create_agent_run(
+                dispatch_session,
+                scan_id=scan.id,
+                llm_connection_id=llm_conn.id,
+                runtime_mode="backend",
+            )
+        await agent_service.trigger_backend_run(agent_run, AsyncSessionLocal)
+
+        logger.info(
+            "scan_service: auto-dispatched agent run %s for scan %s",
+            agent_run.id,
+            scan.id,
+        )
+    except Exception:  # noqa: BLE001
+        # Never propagate — scan completion takes priority over agent dispatch.
+        logger.exception("scan_service: auto-dispatch failed for scan %s", scan.id)
 
 
 def trigger_scan_background(scan_id: UUID) -> asyncio.Task:
