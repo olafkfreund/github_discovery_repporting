@@ -126,7 +126,7 @@ function ProfileEditor({ registry, initial, onSave, onCancel }: ProfileEditorPro
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Strict Security Profile"
               className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                         focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                         focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               required
             />
           </div>
@@ -138,7 +138,7 @@ function ProfileEditor({ registry, initial, onSave, onCancel }: ProfileEditorPro
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional description"
               className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                         focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                         focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
           </div>
         </div>
@@ -171,13 +171,13 @@ function ProfileEditor({ registry, initial, onSave, onCancel }: ProfileEditorPro
                       type="checkbox"
                       checked={enabled}
                       onChange={() => toggleCategory(cat.category)}
-                      className="rounded border-gray-300 text-indigo-600
-                                 focus:ring-indigo-500"
+                      className="rounded border-gray-300 text-brand-600
+                                 focus:ring-brand-500"
                     />
                     <button
                       type="button"
                       onClick={() => toggleExpanded(cat.category)}
-                      className="flex items-center gap-2 text-sm font-medium text-gray-800 hover:text-indigo-600"
+                      className="flex items-center gap-2 text-sm font-medium text-gray-800 hover:text-brand-600"
                     >
                       <svg
                         className={`h-4 w-4 transition-transform ${expanded ? 'rotate-90' : ''}`}
@@ -200,7 +200,7 @@ function ProfileEditor({ registry, initial, onSave, onCancel }: ProfileEditorPro
                       onChange={(e) => setCatWeight(cat.category, parseFloat(e.target.value) || 0)}
                       disabled={!enabled}
                       className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right
-                                 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500
+                                 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500
                                  disabled:bg-gray-100 disabled:text-gray-400"
                     />
                   </div>
@@ -231,8 +231,8 @@ function ProfileEditor({ registry, initial, onSave, onCancel }: ProfileEditorPro
                                   type="checkbox"
                                   checked={checkEnabled}
                                   onChange={() => toggleCheck(cat.category, check.check_id)}
-                                  className="rounded border-gray-300 text-indigo-600
-                                             focus:ring-indigo-500"
+                                  className="rounded border-gray-300 text-brand-600
+                                             focus:ring-brand-500"
                                 />
                               </td>
                               <td className="py-2 pr-3">
@@ -270,7 +270,7 @@ function ProfileEditor({ registry, initial, onSave, onCancel }: ProfileEditorPro
                                           }
                                           disabled={!checkEnabled}
                                           className="w-20 rounded border border-gray-300 px-1.5 py-0.5 text-xs text-right
-                                                     focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500
+                                                     focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500
                                                      disabled:bg-gray-100"
                                         />
                                       </div>
@@ -297,9 +297,9 @@ function ProfileEditor({ registry, initial, onSave, onCancel }: ProfileEditorPro
           <button
             type="submit"
             disabled={saving}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md
-                       hover:bg-indigo-700 disabled:opacity-50
-                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-md
+                       hover:bg-brand-700 disabled:opacity-50
+                       focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
           >
             {saving ? 'Saving...' : initial ? 'Update Profile' : 'Create Profile'}
           </button>
@@ -418,9 +418,9 @@ export default function ScanProfilesPage() {
     <div className="space-y-6">
       {/* Breadcrumb */}
       <nav className="text-sm">
-        <Link to="/customers" className="text-indigo-600 hover:text-indigo-700">Customers</Link>
+        <Link to="/customers" className="text-brand-600 hover:text-brand-700">Customers</Link>
         <span className="mx-2 text-gray-400">/</span>
-        <Link to={`/customers/${customer.id}`} className="text-indigo-600 hover:text-indigo-700">{customer.name}</Link>
+        <Link to={`/customers/${customer.id}`} className="text-brand-600 hover:text-brand-700">{customer.name}</Link>
         <span className="mx-2 text-gray-400">/</span>
         <span className="text-gray-700 font-medium">Scan Profiles</span>
       </nav>
@@ -436,8 +436,8 @@ export default function ScanProfilesPage() {
         {!showEditor && (
           <button
             onClick={() => { setEditingProfile(undefined); setShowEditor(true) }}
-            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm
-                       font-medium rounded-md hover:bg-indigo-700"
+            className="flex items-center gap-1.5 px-4 py-2 bg-brand-600 text-white text-sm
+                       font-medium rounded-md hover:bg-brand-700"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -479,7 +479,7 @@ export default function ScanProfilesPage() {
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-semibold text-gray-900">{profile.name}</h4>
                     {profile.is_default && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-100 text-brand-800">
                         Default
                       </span>
                     )}
@@ -497,8 +497,8 @@ export default function ScanProfilesPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => { setEditingProfile(profile); setShowEditor(true) }}
-                    className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50
-                               border border-indigo-200 rounded-md hover:bg-indigo-100"
+                    className="px-3 py-1.5 text-xs font-medium text-brand-700 bg-brand-50
+                               border border-brand-200 rounded-md hover:bg-brand-100"
                   >
                     Edit
                   </button>

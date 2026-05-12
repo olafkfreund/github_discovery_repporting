@@ -42,7 +42,7 @@ function AddCustomerForm({ onCreated, onCancel }: AddCustomerFormProps) {
   }
 
   return (
-    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-6 mb-6">
+    <div className="bg-brand-50 border border-brand-200 rounded-lg p-6 mb-6">
       <h3 className="text-base font-semibold text-gray-800 mb-4">Add New Customer</h3>
       {error && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
@@ -60,7 +60,7 @@ function AddCustomerForm({ onCreated, onCancel }: AddCustomerFormProps) {
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                       focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                       focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             placeholder="Acme Corp"
             required
           />
@@ -75,7 +75,7 @@ function AddCustomerForm({ onCreated, onCancel }: AddCustomerFormProps) {
             value={form.contact_email ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, contact_email: e.target.value }))}
             className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                       focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                       focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             placeholder="contact@acme.com"
           />
         </div>
@@ -89,7 +89,7 @@ function AddCustomerForm({ onCreated, onCancel }: AddCustomerFormProps) {
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             rows={3}
             className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                       focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                       focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             placeholder="Additional notes..."
           />
         </div>
@@ -97,9 +97,9 @@ function AddCustomerForm({ onCreated, onCancel }: AddCustomerFormProps) {
           <button
             type="submit"
             disabled={submitting}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md
-                       hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed
-                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-md
+                       hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed
+                       focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
           >
             {submitting ? 'Creating…' : 'Create Customer'}
           </button>
@@ -108,7 +108,7 @@ function AddCustomerForm({ onCreated, onCancel }: AddCustomerFormProps) {
             onClick={onCancel}
             className="px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-md
                        border border-gray-300 hover:bg-gray-50
-                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                       focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
           >
             Cancel
           </button>
@@ -182,9 +182,9 @@ export default function CustomersPage() {
         {!showAddForm && (
           <button
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm
-                       font-medium rounded-md hover:bg-indigo-700
-                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm
+                       font-medium rounded-md hover:bg-brand-700
+                       focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -216,7 +216,7 @@ export default function CustomersPage() {
           <p className="text-gray-400 text-sm mt-1">Add your first customer to get started.</p>
           <button
             onClick={() => setShowAddForm(true)}
-            className="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
+            className="mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-md hover:bg-brand-700"
           >
             Add Customer
           </button>

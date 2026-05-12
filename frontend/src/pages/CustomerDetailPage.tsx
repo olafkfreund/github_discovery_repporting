@@ -99,7 +99,7 @@ function AddConnectionForm({ customerId, onCreated, onCancel }: AddConnectionFor
               value={form.platform}
               onChange={(e) => setForm((f) => ({ ...f, platform: e.target.value as ConnectionCreatePayload['platform'] }))}
               className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                         focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                         focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             >
               <option value="github">GitHub</option>
               <option value="gitlab">GitLab</option>
@@ -114,7 +114,7 @@ function AddConnectionForm({ customerId, onCreated, onCancel }: AddConnectionFor
               onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
               placeholder="My GitHub Org"
               className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                         focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                         focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               required
             />
           </div>
@@ -127,7 +127,7 @@ function AddConnectionForm({ customerId, onCreated, onCancel }: AddConnectionFor
             onChange={(e) => setForm((f) => ({ ...f, org_or_group: e.target.value }))}
             placeholder="my-org-name"
             className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                       focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                       focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             required
           />
         </div>
@@ -140,7 +140,7 @@ function AddConnectionForm({ customerId, onCreated, onCancel }: AddConnectionFor
               onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
               placeholder="https://gitlab.mycompany.com"
               className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                         focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                         focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
           </div>
         )}
@@ -152,7 +152,7 @@ function AddConnectionForm({ customerId, onCreated, onCancel }: AddConnectionFor
             onChange={(e) => setForm((f) => ({ ...f, token: e.target.value }))}
             placeholder="ghp_…"
             className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                       focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                       focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             required
           />
         </div>
@@ -160,9 +160,9 @@ function AddConnectionForm({ customerId, onCreated, onCancel }: AddConnectionFor
           <button
             type="submit"
             disabled={submitting}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md
-                       hover:bg-indigo-700 disabled:opacity-50
-                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-md
+                       hover:bg-brand-700 disabled:opacity-50
+                       focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
           >
             {submitting ? 'Adding…' : 'Add Connection'}
           </button>
@@ -265,7 +265,7 @@ function EditConnectionForm({ connection, onUpdated, onCancel }: EditConnectionF
               value={form.display_name}
               onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
               className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                         focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                         focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               required
             />
           </div>
@@ -277,7 +277,7 @@ function EditConnectionForm({ connection, onUpdated, onCancel }: EditConnectionF
             value={form.org_or_group}
             onChange={(e) => setForm((f) => ({ ...f, org_or_group: e.target.value }))}
             className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                       focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                       focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             required
           />
         </div>
@@ -290,7 +290,7 @@ function EditConnectionForm({ connection, onUpdated, onCancel }: EditConnectionF
               onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
               placeholder="https://gitlab.mycompany.com"
               className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                         focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                         focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
           </div>
         )}
@@ -304,7 +304,7 @@ function EditConnectionForm({ connection, onUpdated, onCancel }: EditConnectionF
             onChange={(e) => setForm((f) => ({ ...f, token: e.target.value }))}
             placeholder="Enter new token to update..."
             className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                       focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                       focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </div>
         <div className="flex gap-3 pt-1">
@@ -499,7 +499,7 @@ export default function CustomerDetailPage() {
     <div className="space-y-8">
       {/* Breadcrumb */}
       <nav className="text-sm">
-        <Link to="/customers" className="text-indigo-600 hover:text-indigo-700">
+        <Link to="/customers" className="text-brand-600 hover:text-brand-700">
           Customers
         </Link>
         <span className="mx-2 text-gray-400">/</span>
@@ -538,8 +538,8 @@ export default function CustomerDetailPage() {
           <h3 className="text-lg font-semibold text-gray-800">Platform Connections</h3>
           <button
             onClick={() => setShowAddConnection((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm
-                       font-medium rounded-md hover:bg-indigo-700"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-sm
+                       font-medium rounded-md hover:bg-brand-700"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -588,8 +588,8 @@ export default function CustomerDetailPage() {
                       <button
                         onClick={() => { void handleValidate(conn.id) }}
                         disabled={validatingId === conn.id}
-                        className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50
-                                   border border-indigo-200 rounded-md hover:bg-indigo-100
+                        className="px-3 py-1.5 text-xs font-medium text-brand-700 bg-brand-50
+                                   border border-brand-200 rounded-md hover:bg-brand-100
                                    disabled:opacity-50"
                       >
                         {validatingId === conn.id ? 'Validating...' : 'Validate'}
@@ -629,7 +629,7 @@ export default function CustomerDetailPage() {
             <h3 className="text-lg font-semibold text-gray-800">Scan History</h3>
             <Link
               to={`/customers/${customer.id}/scan-profiles`}
-              className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+              className="text-xs font-medium text-brand-600 hover:text-brand-700"
             >
               Manage Profiles
             </Link>
@@ -637,8 +637,8 @@ export default function CustomerDetailPage() {
           <button
             onClick={() => setShowScanForm((v) => !v)}
             disabled={activeConnections.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm
-                       font-medium rounded-md hover:bg-indigo-700
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-sm
+                       font-medium rounded-md hover:bg-brand-700
                        disabled:opacity-50 disabled:cursor-not-allowed"
             title={activeConnections.length === 0 ? 'Add a connection first' : undefined}
           >
@@ -658,7 +658,7 @@ export default function CustomerDetailPage() {
                   value={selectedConnectionId}
                   onChange={(e) => setSelectedConnectionId(e.target.value)}
                   className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                             focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                             focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 >
                   <option value="">— choose connection —</option>
                   {activeConnections.map((c) => (
@@ -672,7 +672,7 @@ export default function CustomerDetailPage() {
                   value={selectedProfileId}
                   onChange={(e) => setSelectedProfileId(e.target.value)}
                   className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                             focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                             focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 >
                   <option value="">— all checks (default) —</option>
                   {scanProfiles.map((p) => (
@@ -683,8 +683,8 @@ export default function CustomerDetailPage() {
               <button
                 onClick={() => { void handleTriggerScan() }}
                 disabled={!selectedConnectionId || triggeringScan}
-                className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md
-                           hover:bg-indigo-700 disabled:opacity-50"
+                className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-md
+                           hover:bg-brand-700 disabled:opacity-50"
               >
                 {triggeringScan ? 'Starting…' : 'Start Scan'}
               </button>
@@ -739,7 +739,7 @@ export default function CustomerDetailPage() {
                           )}
                           <Link
                             to={`/scans/${scan.id}`}
-                            className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
+                            className="text-sm font-medium text-brand-600 hover:text-brand-700"
                           >
                             View
                           </Link>
@@ -799,7 +799,7 @@ export default function CustomerDetailPage() {
                                 href={api.downloadReport(report.id)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs font-medium px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                                className="text-xs font-medium px-2 py-1 rounded bg-brand-50 text-brand-700 hover:bg-brand-100"
                               >
                                 PDF
                               </a>

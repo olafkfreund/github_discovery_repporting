@@ -170,9 +170,9 @@ export default function ScanDetailPage() {
     <div className="space-y-8">
       {/* Breadcrumb */}
       <nav className="text-sm">
-        <Link to="/customers" className="text-indigo-600 hover:text-indigo-700">Customers</Link>
+        <Link to="/customers" className="text-brand-600 hover:text-brand-700">Customers</Link>
         <span className="mx-2 text-gray-400">/</span>
-        <Link to={`/customers/${scan.customer_id}`} className="text-indigo-600 hover:text-indigo-700">
+        <Link to={`/customers/${scan.customer_id}`} className="text-brand-600 hover:text-brand-700">
           Customer
         </Link>
         <span className="mx-2 text-gray-400">/</span>
@@ -212,7 +212,7 @@ export default function ScanDetailPage() {
                       href={api.downloadReport(generatedReport.id)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs font-medium px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                      className="text-xs font-medium px-2 py-1 rounded bg-brand-50 text-brand-700 hover:bg-brand-100"
                     >
                       PDF
                     </a>
@@ -312,7 +312,7 @@ export default function ScanDetailPage() {
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
                 className="text-xs rounded-md border border-gray-300 px-2 py-1.5
-                           focus:border-indigo-500 focus:outline-none"
+                           focus:border-brand-500 focus:outline-none"
               >
                 {categories.map((c) => (
                   <option key={c} value={c}>{c === ALL_OPTION ? 'All categories' : c.replace(/_/g, ' ')}</option>
@@ -322,7 +322,7 @@ export default function ScanDetailPage() {
                 value={filterSeverity}
                 onChange={(e) => setFilterSeverity(e.target.value)}
                 className="text-xs rounded-md border border-gray-300 px-2 py-1.5
-                           focus:border-indigo-500 focus:outline-none"
+                           focus:border-brand-500 focus:outline-none"
               >
                 {severities.map((s) => (
                   <option key={s} value={s}>{s === ALL_OPTION ? 'All severities' : s}</option>
@@ -332,7 +332,7 @@ export default function ScanDetailPage() {
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="text-xs rounded-md border border-gray-300 px-2 py-1.5
-                           focus:border-indigo-500 focus:outline-none"
+                           focus:border-brand-500 focus:outline-none"
               >
                 {statuses.map((s) => (
                   <option key={s} value={s}>{s === ALL_OPTION ? 'All statuses' : s}</option>
@@ -345,7 +345,7 @@ export default function ScanDetailPage() {
                     setFilterSeverity(ALL_OPTION)
                     setFilterStatus(ALL_OPTION)
                   }}
-                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium px-2 py-1.5"
+                  className="text-xs text-brand-600 hover:text-brand-700 font-medium px-2 py-1.5"
                 >
                   Clear filters
                 </button>

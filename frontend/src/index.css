@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+/*
+ * Synechron brand palette — sampled from https://www.synechron.com/en-gb
+ *
+ * Canonical brand colors:
+ *   - Navy   #002535   (primary, used for body text + dark surfaces on
+ *                       the corporate site — sampled as the most common
+ *                       text color across the page)
+ *   - Yellow #FBF320   (accent, used for highlights and section breaks)
+ *   - White  #FFFFFF   (text on dark surfaces)
+ *
+ * `brand-*` is a navy ramp anchored on the canonical navy at 800.
+ * `accent-*` is a yellow ramp anchored on the canonical yellow at 400.
+ * Tailwind's built-in red/green/yellow/blue/purple scales are still used
+ * for semantic status badges (warning, error, success, info).
+ */
+@theme {
+  /* Navy ramp — primary brand color */
+  --color-brand-50:  #F1F5F7;
+  --color-brand-100: #DCE5EA;
+  --color-brand-200: #B8CAD3;
+  --color-brand-300: #8FA9B6;
+  --color-brand-400: #5E8294;
+  --color-brand-500: #1F5870;
+  --color-brand-600: #0B4459;
+  --color-brand-700: #003545;
+  --color-brand-800: #002535;
+  --color-brand-900: #001620;
+
+  /* Yellow ramp — accent / highlight */
+  --color-accent-50:  #FFFDF0;
+  --color-accent-100: #FEFAC4;
+  --color-accent-200: #FDF688;
+  --color-accent-300: #FCEF42;
+  --color-accent-400: #FBF320;
+  --color-accent-500: #E5DC00;
+  --color-accent-600: #B8B100;
+  --color-accent-700: #8A8500;
+}

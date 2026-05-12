@@ -76,9 +76,9 @@ export default function DashboardPage() {
         <StatCard
           label="Total Customers"
           value={stats?.total_customers ?? 0}
-          color="bg-indigo-100"
+          color="bg-brand-100"
           icon={
-            <svg className="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="h-6 w-6 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           }
@@ -123,7 +123,7 @@ export default function DashboardPage() {
         {recentScans.length === 0 ? (
           <div className="px-6 py-12 text-center">
             <p className="text-gray-500">No scans yet. Add a customer and trigger a scan to get started.</p>
-            <Link to="/customers" className="mt-3 inline-block text-indigo-600 hover:text-indigo-700 font-medium text-sm">
+            <Link to="/customers" className="mt-3 inline-block text-brand-600 hover:text-brand-700 font-medium text-sm">
               Go to Customers
             </Link>
           </div>
@@ -155,7 +155,7 @@ export default function DashboardPage() {
                     <td className="px-6 py-4 text-right">
                       <Link
                         to={`/scans/${scan.id}`}
-                        className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                        className="text-brand-600 hover:text-brand-700 text-sm font-medium"
                       >
                         View
                       </Link>

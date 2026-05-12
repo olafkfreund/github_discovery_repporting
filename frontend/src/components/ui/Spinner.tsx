@@ -11,7 +11,7 @@ interface SpinnerProps {
 export function Spinner({ className = 'h-64' }: SpinnerProps) {
   return (
     <div className={`flex items-center justify-center ${className}`}>
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
     </div>
   )
 }
