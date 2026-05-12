@@ -22,6 +22,8 @@ export interface Connection {
   updated_at: string
   /** Per-connection agent instructions override. Null = use customer default. */
   agent_instructions_override?: string | null
+  /** Per-connection skills override map. Null = use customer defaults for all skills. */
+  skills_override?: Record<string, boolean> | null
 }
 
 export interface Scan {

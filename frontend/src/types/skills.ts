@@ -54,3 +54,16 @@ export interface SkillFilters {
   enabledOnly: boolean
   search: string
 }
+
+/**
+ * Per-connection skill overrides.
+ *
+ * Sparse dict: skill names ABSENT from the map inherit the customer-level
+ * toggle. Present-and-true forces enabled for this connection; present-and-false
+ * forces disabled.
+ *
+ * Empty dict clears all overrides on the connection.
+ */
+export interface ConnectionSkillsOverridePayload {
+  overrides: Record<string, boolean>
+}
