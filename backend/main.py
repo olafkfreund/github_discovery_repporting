@@ -26,11 +26,11 @@ def _register_routers(app: FastAPI) -> None:
     from backend.routers.customers import router as customers_router
     from backend.routers.dashboard import router as dashboard_router
     from backend.routers.llm_connections import router as llm_connections_router
+    from backend.routers.model_cards import router as model_cards_router
     from backend.routers.remediation_policies import router as remediation_policies_router
     from backend.routers.reports import router as reports_router
     from backend.routers.scan_profiles import router as scan_profiles_router
     from backend.routers.scans import router as scans_router
-    from backend.routers.model_cards import router as model_cards_router
     from backend.routers.skills import router as skills_router
 
     app.include_router(agent_profiles_router)
