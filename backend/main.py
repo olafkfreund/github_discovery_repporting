@@ -30,6 +30,7 @@ def _register_routers(app: FastAPI) -> None:
     from backend.routers.reports import router as reports_router
     from backend.routers.scan_profiles import router as scan_profiles_router
     from backend.routers.scans import router as scans_router
+    from backend.routers.model_cards import router as model_cards_router
     from backend.routers.skills import router as skills_router
 
     app.include_router(agent_profiles_router)
@@ -47,6 +48,7 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(remediation_policies_router)
     # Agent runs router: includes /api/scans/{scan_id}/agent-runs and /api/agent-runs/...
     app.include_router(agent_runs_router)
+    app.include_router(model_cards_router)
 
 
 def _check_weasyprint() -> None:
