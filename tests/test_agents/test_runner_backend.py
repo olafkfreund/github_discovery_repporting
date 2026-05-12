@@ -868,3 +868,329 @@ async def test_pr_url_extracted_from_final_message(runner_factory, runner_db) ->
 
     assert action.pr_url is not None
     assert "pull/99" in action.pr_url
+
+
+# ---------------------------------------------------------------------------
+# Phase-C skill-block injection tests (issue #38)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_runner_injects_skill_block_when_relevant(runner_factory, runner_db) -> None:
+    """When resolve_for_check returns matching skills, the system prompt contains ## Skills."""
+    from backend.services.skill_service import ResolvedSkill
+
+    scaffold = await _build_run_scaffold(runner_db)
+    run_id = scaffold["run"].id
+
+    fake_skill = ResolvedSkill(
+        name="codeowners-team-mapping",
+        body="# CODEOWNERS guidance\nAlways use team handles.",
+        sha256="abc" * 21 + "d",  # 64 hex chars
+        source="builtin",
+        applies_to=["REPO-008"],
+    )
+
+    captured_system_prompts: list[str] = []
+
+    async def _capture_loop(**kwargs):  # noqa: ANN202
+        captured_system_prompts.append(kwargs["system_prompt"])
+        sink = kwargs["event_sink"]
+        await sink(LoopEvent(step_index=0, step_type=AgentStepType.final))
+        return _success_loop_result()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ws = _make_fake_workspace(Path(tmpdir))
+
+        with (
+            patch("backend.agents.runner_backend.open_workspace") as mock_ws,
+            patch("backend.agents.runner_backend.run_loop", side_effect=_capture_loop),
+            patch("backend.agents.runner_backend.create_provider") as mock_cp,
+            patch("backend.agents.runner_backend.get_llm_provider") as mock_llm,
+            patch(
+                "backend.agents.runner_backend.skill_service.resolve_for_check",
+                new_callable=AsyncMock,
+                return_value=[fake_skill],
+            ),
+        ):
+            mock_ws.side_effect = _make_workspace_side_effect(ws)
+            mock_cp.return_value = MagicMock()
+            mock_llm.return_value = MagicMock()
+
+            from backend.agents.runner_backend import run_backend_agent
+
+            await run_backend_agent(agent_run_id=run_id, db_factory=runner_factory)
+
+    assert len(captured_system_prompts) >= 1
+    sp = captured_system_prompts[0]
+    assert "## Skills" in sp
+    assert "### codeowners-team-mapping" in sp
+    assert "CODEOWNERS guidance" in sp
+
+
+@pytest.mark.asyncio
+async def test_runner_omits_skill_block_when_no_match(runner_factory, runner_db) -> None:
+    """When resolve_for_check returns an empty list, ## Skills is absent from the prompt."""
+    scaffold = await _build_run_scaffold(runner_db)
+    run_id = scaffold["run"].id
+
+    captured_system_prompts: list[str] = []
+
+    async def _capture_loop(**kwargs):  # noqa: ANN202
+        captured_system_prompts.append(kwargs["system_prompt"])
+        sink = kwargs["event_sink"]
+        await sink(LoopEvent(step_index=0, step_type=AgentStepType.final))
+        return _success_loop_result()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ws = _make_fake_workspace(Path(tmpdir))
+
+        with (
+            patch("backend.agents.runner_backend.open_workspace") as mock_ws,
+            patch("backend.agents.runner_backend.run_loop", side_effect=_capture_loop),
+            patch("backend.agents.runner_backend.create_provider") as mock_cp,
+            patch("backend.agents.runner_backend.get_llm_provider") as mock_llm,
+            patch(
+                "backend.agents.runner_backend.skill_service.resolve_for_check",
+                new_callable=AsyncMock,
+                return_value=[],  # no skills match
+            ),
+        ):
+            mock_ws.side_effect = _make_workspace_side_effect(ws)
+            mock_cp.return_value = MagicMock()
+            mock_llm.return_value = MagicMock()
+
+            from backend.agents.runner_backend import run_backend_agent
+
+            await run_backend_agent(agent_run_id=run_id, db_factory=runner_factory)
+
+    assert len(captured_system_prompts) >= 1
+    assert "## Skills" not in captured_system_prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_runner_prompt_hash_combines_skill_shas(runner_factory, runner_db) -> None:
+    """prompt_hash changes when skills are present vs absent, and is always 64 hex chars."""
+    import re
+
+    from backend.services.skill_service import ResolvedSkill
+
+    scaffold_a = await _build_run_scaffold(runner_db)
+    run_id_a = scaffold_a["run"].id
+
+    scaffold_b = await _build_run_scaffold(runner_db)
+    run_id_b = scaffold_b["run"].id
+
+    fake_skill = ResolvedSkill(
+        name="branch-protection-baseline",
+        body="Protect your branches.",
+        sha256="f" * 64,
+        source="builtin",
+        applies_to=["REPO-001"],
+    )
+
+    captured_hashes_a: list[str] = []
+    captured_hashes_b: list[str] = []
+
+    async def _capture_hash_a(**kwargs):  # noqa: ANN202
+        captured_hashes_a.append(kwargs["prompt_hash"])
+        sink = kwargs["event_sink"]
+        await sink(LoopEvent(step_index=0, step_type=AgentStepType.final))
+        return _success_loop_result()
+
+    async def _capture_hash_b(**kwargs):  # noqa: ANN202
+        captured_hashes_b.append(kwargs["prompt_hash"])
+        sink = kwargs["event_sink"]
+        await sink(LoopEvent(step_index=0, step_type=AgentStepType.final))
+        return _success_loop_result()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ws = _make_fake_workspace(Path(tmpdir))
+
+        # Run A: skill present.
+        with (
+            patch("backend.agents.runner_backend.open_workspace") as mock_ws,
+            patch("backend.agents.runner_backend.run_loop", side_effect=_capture_hash_a),
+            patch("backend.agents.runner_backend.create_provider") as mock_cp,
+            patch("backend.agents.runner_backend.get_llm_provider") as mock_llm,
+            patch(
+                "backend.agents.runner_backend.skill_service.resolve_for_check",
+                new_callable=AsyncMock,
+                return_value=[fake_skill],
+            ),
+        ):
+            mock_ws.side_effect = _make_workspace_side_effect(ws)
+            mock_cp.return_value = MagicMock()
+            mock_llm.return_value = MagicMock()
+
+            from backend.agents.runner_backend import run_backend_agent
+
+            await run_backend_agent(agent_run_id=run_id_a, db_factory=runner_factory)
+
+    with tempfile.TemporaryDirectory() as tmpdir2:
+        ws2 = _make_fake_workspace(Path(tmpdir2))
+
+        # Run B: no skill.
+        with (
+            patch("backend.agents.runner_backend.open_workspace") as mock_ws,
+            patch("backend.agents.runner_backend.run_loop", side_effect=_capture_hash_b),
+            patch("backend.agents.runner_backend.create_provider") as mock_cp,
+            patch("backend.agents.runner_backend.get_llm_provider") as mock_llm,
+            patch(
+                "backend.agents.runner_backend.skill_service.resolve_for_check",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            mock_ws.side_effect = _make_workspace_side_effect(ws2)
+            mock_cp.return_value = MagicMock()
+            mock_llm.return_value = MagicMock()
+
+            await run_backend_agent(agent_run_id=run_id_b, db_factory=runner_factory)
+
+    assert len(captured_hashes_a) >= 1
+    assert len(captured_hashes_b) >= 1
+    hash_a = captured_hashes_a[0]
+    hash_b = captured_hashes_b[0]
+
+    # Both must be 64-character lowercase hex strings (SHA-256).
+    assert re.fullmatch(r"[0-9a-f]{64}", hash_a), f"hash_a is not valid SHA256: {hash_a!r}"
+    assert re.fullmatch(r"[0-9a-f]{64}", hash_b), f"hash_b is not valid SHA256: {hash_b!r}"
+
+    # Hashes must differ when skills differ.
+    assert hash_a != hash_b, "prompt_hash must differ when skill SHAs change"
+
+
+@pytest.mark.asyncio
+async def test_runner_respects_skill_prompt_budget(runner_factory, runner_db) -> None:
+    """Skills exceeding the budget are truncated; all skill names remain; [truncated] appears."""
+    from backend.config import settings
+    from backend.services.skill_service import ResolvedSkill
+
+    scaffold = await _build_run_scaffold(runner_db)
+    run_id = scaffold["run"].id
+
+    # Build 5 skills whose bodies sum to well over the budget (8 KB).
+    large_body = "X" * 4096  # 4 KB each × 5 = 20 KB total
+    fake_skills = [
+        ResolvedSkill(
+            name=f"fake-skill-{i:02d}",
+            body=large_body,
+            sha256=f"{i:064x}",
+            source="builtin",
+            applies_to=[],
+        )
+        for i in range(5)
+    ]
+
+    captured_system_prompts: list[str] = []
+
+    async def _capture_loop(**kwargs):  # noqa: ANN202
+        captured_system_prompts.append(kwargs["system_prompt"])
+        sink = kwargs["event_sink"]
+        await sink(LoopEvent(step_index=0, step_type=AgentStepType.final))
+        return _success_loop_result()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ws = _make_fake_workspace(Path(tmpdir))
+
+        with (
+            patch("backend.agents.runner_backend.open_workspace") as mock_ws,
+            patch("backend.agents.runner_backend.run_loop", side_effect=_capture_loop),
+            patch("backend.agents.runner_backend.create_provider") as mock_cp,
+            patch("backend.agents.runner_backend.get_llm_provider") as mock_llm,
+            patch(
+                "backend.agents.runner_backend.skill_service.resolve_for_check",
+                new_callable=AsyncMock,
+                return_value=fake_skills,
+            ),
+        ):
+            mock_ws.side_effect = _make_workspace_side_effect(ws)
+            mock_cp.return_value = MagicMock()
+            mock_llm.return_value = MagicMock()
+
+            from backend.agents.runner_backend import run_backend_agent
+
+            await run_backend_agent(agent_run_id=run_id, db_factory=runner_factory)
+
+    assert len(captured_system_prompts) >= 1
+    sp = captured_system_prompts[0]
+
+    # The Skills section itself must respect the budget (with reasonable overhead
+    # for system prompt boilerplate — the budget applies only to the skill block).
+    # Extract just the Skills section for budget assertion.
+    skills_section_start = sp.find("## Skills")
+    assert skills_section_start != -1, "## Skills section must be present"
+    skills_section = sp[skills_section_start:]
+    skills_section_bytes = len(skills_section.encode("utf-8"))
+    # The skills section should be well under 2× the budget (budget + header overhead).
+    assert skills_section_bytes <= settings.SKILL_PROMPT_BUDGET_BYTES * 2
+
+    # All 5 skill names must appear (no skill dropped entirely).
+    for i in range(5):
+        assert f"### fake-skill-{i:02d}" in sp, f"skill fake-skill-{i:02d} was dropped from prompt"
+
+    # At least one body must be truncated.
+    assert "[truncated]" in sp, "Expected at least one skill body to be truncated"
+
+
+@pytest.mark.asyncio
+async def test_runner_respects_connection_override(runner_factory, runner_db) -> None:
+    """Per-connection skills_override=False suppresses a built-in skill injection."""
+    from backend.models.skill import SkillToggle
+
+    scaffold = await _build_run_scaffold(runner_db)
+    run_id = scaffold["run"].id
+    customer_id = scaffold["customer"].id
+
+    # Disable codeowners-team-mapping via customer-level SkillToggle.
+    async with runner_factory() as toggle_db:
+        toggle = SkillToggle(
+            customer_id=customer_id,
+            skill_name="codeowners-team-mapping",
+            enabled=False,
+        )
+        toggle_db.add(toggle)
+        await toggle_db.commit()
+
+    # Also set skills_override on the connection to False (connection wins highest).
+    async with runner_factory() as conn_db:
+        from sqlalchemy import select as sa_select
+
+        from backend.models.customer import PlatformConnection
+
+        result = await conn_db.execute(
+            sa_select(PlatformConnection).where(PlatformConnection.id == scaffold["conn"].id)
+        )
+        platform_conn = result.scalar_one()
+        platform_conn.skills_override = {"codeowners-team-mapping": False}
+        await conn_db.commit()
+
+    captured_system_prompts: list[str] = []
+
+    async def _capture_loop(**kwargs):  # noqa: ANN202
+        captured_system_prompts.append(kwargs["system_prompt"])
+        sink = kwargs["event_sink"]
+        await sink(LoopEvent(step_index=0, step_type=AgentStepType.final))
+        return _success_loop_result()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ws = _make_fake_workspace(Path(tmpdir))
+
+        with (
+            patch("backend.agents.runner_backend.open_workspace") as mock_ws,
+            patch("backend.agents.runner_backend.run_loop", side_effect=_capture_loop),
+            patch("backend.agents.runner_backend.create_provider") as mock_cp,
+            patch("backend.agents.runner_backend.get_llm_provider") as mock_llm,
+        ):
+            mock_ws.side_effect = _make_workspace_side_effect(ws)
+            mock_cp.return_value = MagicMock()
+            mock_llm.return_value = MagicMock()
+
+            from backend.agents.runner_backend import run_backend_agent
+
+            await run_backend_agent(agent_run_id=run_id, db_factory=runner_factory)
+
+    assert len(captured_system_prompts) >= 1
+    # codeowners-team-mapping must NOT appear (disabled via override).
+    assert "codeowners-team-mapping" not in captured_system_prompts[0]
