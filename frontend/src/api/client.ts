@@ -41,6 +41,7 @@ import type {
   AgentRunCostEstimate,
   AgentRunTriggerPayload,
   RemediationPolicy,
+  RemediationPolicyUpsertPayload,
 } from '../types/agents'
 
 const BASE_URL = '/api'
@@ -296,6 +297,18 @@ export const api = {
       throw err
     }
   },
+
+  upsertRemediationPolicy: (
+    customerId: string,
+    payload: RemediationPolicyUpsertPayload,
+  ): Promise<RemediationPolicy> =>
+    request<RemediationPolicy>(`/customers/${customerId}/remediation-policy`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteRemediationPolicy: (customerId: string): Promise<void> =>
+    request<void>(`/customers/${customerId}/remediation-policy`, { method: 'DELETE' }),
 
   estimateAgentRunCost: (scanId: string): Promise<AgentRunCostEstimate> =>
     request<AgentRunCostEstimate>(`/scans/${scanId}/agent-run-estimate`),
