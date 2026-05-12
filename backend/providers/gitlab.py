@@ -11,7 +11,7 @@ import yaml
 from gitlab.exceptions import GitlabError
 
 from backend.models.enums import Platform
-from backend.providers.base import validate_base_url
+from backend.providers.base import ProviderWriteError, validate_base_url
 from backend.schemas.platform_data import (
     BranchProtection,
     BranchProtectionRules,
@@ -263,7 +263,23 @@ class GitLabProvider:
         return await self._run(_fetch_group)
 
     # ---------------------------------------------------------------------------
-    # Write operations (Phase 2 — stubs, see follow-up issue #15)
+    # Private helpers
+    # ---------------------------------------------------------------------------
+
+    async def _get_project(self, repo: NormalizedRepo) -> Any:
+        """Resolve a NormalizedRepo to a python-gitlab Project object.
+
+        Args:
+            repo: A repository whose ``external_id`` is the numeric GitLab
+                project ID (set by :func:`_normalize_project`).
+
+        Returns:
+            The full python-gitlab ``Project`` object.
+        """
+        return await self._run(self._client.projects.get, int(repo.external_id))
+
+    # ---------------------------------------------------------------------------
+    # Write operations (Phase 2 — issue #15)
     # ---------------------------------------------------------------------------
 
     async def create_branch(
@@ -272,10 +288,33 @@ class GitLabProvider:
         branch: str,
         from_sha: str,
     ) -> None:
-        """Create a branch — TO BE IMPLEMENTED in issue #15."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.create_branch is not yet implemented (issue #15)"
-        )
+        """Create a new branch at the given commit SHA.
+
+        Args:
+            repo: Target repository.
+            branch: Name for the new branch.
+            from_sha: The commit SHA (or existing ref name) from which to branch.
+
+        Raises:
+            ProviderWriteError: if the branch already exists, the ref is invalid,
+                or any other GitLab API error occurs.
+        """
+        project = await self._get_project(repo)
+        try:
+            await self._run(
+                project.branches.create,
+                {"branch": branch, "ref": from_sha},
+            )
+        except GitlabError as exc:
+            code = getattr(exc, "response_code", None)
+            msg = str(getattr(exc, "error_message", None) or exc).lower()
+            if code == 400 and "already exists" in msg:
+                raise ProviderWriteError(f"Branch '{branch}' already exists.") from exc
+            if code == 400 and "invalid reference" in msg:
+                raise ProviderWriteError(f"Invalid base ref {from_sha}.") from exc
+            raise ProviderWriteError(
+                f"GitLab error: {getattr(exc, 'error_message', None) or exc}"
+            ) from exc
 
     async def commit_files(
         self,
@@ -286,10 +325,62 @@ class GitLabProvider:
         author_name: str | None = None,
         author_email: str | None = None,
     ) -> str:
-        """Commit files — TO BE IMPLEMENTED in issue #15."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.commit_files is not yet implemented (issue #15)"
-        )
+        """Commit a set of file changes atomically to *branch*.
+
+        Uses GitLab's commits API with an actions array so that all file
+        changes land in a single commit regardless of how many files are
+        included.
+
+        Args:
+            repo: Target repository.
+            branch: Existing branch to commit to.
+            files: One or more :class:`~backend.schemas.platform_data.FileChange`
+                entries describing the files to create, update, or delete.
+            message: Commit message.
+            author_name: Optional author name override; both name and email must
+                be provided together, or neither.
+            author_email: Optional author email override.
+
+        Returns:
+            The SHA of the newly created commit.
+
+        Raises:
+            ProviderWriteError: if ``files`` is empty, a required ``content``
+                field is missing, or any GitLab API error occurs.
+        """
+        actions: list[dict[str, Any]] = []
+        for f in files:
+            if f.action == "create":
+                if f.content is None:
+                    raise ProviderWriteError(f"{f.path}: content required for create")
+                actions.append({"action": "create", "file_path": f.path, "content": f.content})
+            elif f.action == "update":
+                if f.content is None:
+                    raise ProviderWriteError(f"{f.path}: content required for update")
+                actions.append({"action": "update", "file_path": f.path, "content": f.content})
+            elif f.action == "delete":
+                actions.append({"action": "delete", "file_path": f.path})
+
+        if not actions:
+            raise ProviderWriteError("No file changes provided.")
+
+        project = await self._get_project(repo)
+        payload: dict[str, Any] = {
+            "branch": branch,
+            "commit_message": message,
+            "actions": actions,
+        }
+        if author_name and author_email:
+            payload["author_name"] = author_name
+            payload["author_email"] = author_email
+
+        try:
+            commit = await self._run(project.commits.create, payload)
+            return commit.id  # type: ignore[no-any-return]
+        except GitlabError as exc:
+            raise ProviderWriteError(
+                f"GitLab error: {getattr(exc, 'error_message', None) or exc}"
+            ) from exc
 
     async def create_pull_request(
         self,
@@ -300,9 +391,61 @@ class GitLabProvider:
         body: str,
         draft: bool = True,
     ) -> PullRequestRef:
-        """Open a MR — TO BE IMPLEMENTED in issue #15."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.create_pull_request is not yet implemented (issue #15)"
+        """Open a merge request from *head* into *base*.
+
+        Draft MRs are indicated by prefixing the title with ``"Draft: "``,
+        which is compatible with all GitLab versions (the native ``draft``
+        field is only available from GitLab 15+).
+
+        Args:
+            repo: Target repository.
+            head: Source branch name.
+            base: Target branch name.
+            title: MR title (stored without the ``"Draft: "`` prefix in the
+                returned :class:`~backend.schemas.platform_data.PullRequestRef`).
+            body: MR description body.
+            draft: Whether to open as a draft (default ``True``).
+
+        Returns:
+            A :class:`~backend.schemas.platform_data.PullRequestRef` with the
+            new MR's metadata.
+
+        Raises:
+            ProviderWriteError: if an MR from *head* to *base* already exists,
+                or any GitLab API error occurs.
+        """
+        project = await self._get_project(repo)
+        final_title = f"Draft: {title}" if draft else title
+        try:
+            mr = await self._run(
+                project.mergerequests.create,
+                {
+                    "source_branch": head,
+                    "target_branch": base,
+                    "title": final_title,
+                    "description": body,
+                },
+            )
+        except GitlabError as exc:
+            code = getattr(exc, "response_code", None)
+            msg = str(getattr(exc, "error_message", None) or exc).lower()
+            if code == 409 or "already exists" in msg:
+                raise ProviderWriteError(
+                    f"An MR from '{head}' to '{base}' already exists."
+                ) from exc
+            raise ProviderWriteError(
+                f"GitLab MR creation failed: {getattr(exc, 'error_message', None) or exc}"
+            ) from exc
+
+        return PullRequestRef(
+            provider=Platform.gitlab,
+            repo_external_id=repo.external_id,
+            pr_number=mr.iid,  # per-project iid, not global mr.id
+            pr_url=mr.web_url,
+            head_branch=head,
+            base_branch=base,
+            title=title,  # user-supplied title without "Draft: " prefix
+            is_draft=draft,
         )
 
     async def get_pr_status(
@@ -310,9 +453,67 @@ class GitLabProvider:
         repo: NormalizedRepo,
         pr_number: int,
     ) -> PRStatus:
-        """Fetch MR status — TO BE IMPLEMENTED in issue #15."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.get_pr_status is not yet implemented (issue #15)"
+        """Fetch the current state of an existing merge request.
+
+        Args:
+            repo: Repository that owns the MR.
+            pr_number: The MR iid (per-project identifier, not the global MR id).
+
+        Returns:
+            A :class:`~backend.schemas.platform_data.PRStatus` snapshot.
+
+        Raises:
+            ProviderWriteError: if the MR cannot be found (404) or any other
+                GitLab API error occurs.
+        """
+        project = await self._get_project(repo)
+        try:
+            mr = await self._run(project.mergerequests.get, pr_number)
+        except GitlabError as exc:
+            if getattr(exc, "response_code", None) == 404:
+                raise ProviderWriteError(f"MR !{pr_number} not found.") from exc
+            raise ProviderWriteError(
+                f"GitLab error: {getattr(exc, 'error_message', None) or exc}"
+            ) from exc
+
+        # Map GitLab MR state to the canonical three-value state.
+        _state_map = {
+            "opened": "open",
+            "closed": "closed",
+            "merged": "merged",
+            "locked": "closed",  # treat locked as closed
+        }
+        state = _state_map.get(mr.state, "closed")
+
+        # GitLab 15+ exposes `draft`; older versions use `work_in_progress`.
+        is_draft = getattr(mr, "draft", getattr(mr, "work_in_progress", False))
+
+        # Map merge_status to a tri-state boolean.
+        _mergeable_map: dict[str, bool | None] = {
+            "can_be_merged": True,
+            "cannot_be_merged": False,
+        }
+        merge_status = getattr(mr, "merge_status", None)
+        mergeable: bool | None = _mergeable_map.get(merge_status)  # None for unchecked/checking
+
+        # Parse merged_at ISO timestamp (may be None when not merged).
+        merged_at: datetime | None = None
+        raw_merged_at = getattr(mr, "merged_at", None)
+        if raw_merged_at:
+            try:
+                merged_at = datetime.fromisoformat(raw_merged_at.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                pass
+
+        return PRStatus(
+            pr_number=mr.iid,
+            state=state,  # type: ignore[arg-type]
+            is_draft=bool(is_draft),
+            head_sha=mr.sha,
+            head_branch=mr.source_branch,
+            base_branch=mr.target_branch,
+            mergeable=mergeable,
+            merged_at=merged_at,
         )
 
     async def set_branch_protection(
@@ -321,10 +522,76 @@ class GitLabProvider:
         branch: str,
         rules: BranchProtectionRules,
     ) -> None:
-        """Apply branch protection — TO BE IMPLEMENTED in issue #15."""
-        raise NotImplementedError(
-            f"{type(self).__name__}.set_branch_protection is not yet implemented (issue #15)"
-        )
+        """Apply (or replace) branch-protection settings on *branch*.
+
+        GitLab does not support PATCH for protected branches; this method
+        performs a delete-then-create to apply the new rules atomically.
+
+        Push access level mapping:
+
+        - ``rules.restrict_push_users`` non-empty → ``30`` (Developer+).
+          User-specific and group-specific role mappings require ``user_id``
+          / ``group_id`` lookups which are deferred to Phase 5.
+        - ``rules.require_pull_request_review=True`` (and no restricted users)
+          → ``0`` (No one — all pushes go through MRs).
+        - Otherwise → ``30`` (Developer+).
+
+        Merge access is always set to ``40`` (Maintainer).
+
+        GitLab limitations (not supported by this API):
+
+        - ``enforce_admins``: GitLab has no equivalent for protected-branch rules.
+        - ``require_codeowner_review``: set via project approval rules (separate API).
+        - ``required_reviewer_count``: MR approval rules API — out of scope here.
+        - ``require_status_checks``: GitLab status-check API — out of scope here.
+        - ``allow_deletions``: not exposed through the protected-branches API.
+
+        Args:
+            repo: Target repository.
+            branch: Branch to protect.
+            rules: A :class:`~backend.schemas.platform_data.BranchProtectionRules`
+                payload; unsupported fields are silently ignored.
+
+        Raises:
+            ProviderWriteError: if the existing protection cannot be cleared or
+                the new protection rule cannot be created.
+        """
+        project = await self._get_project(repo)
+
+        # Determine push access level.
+        if rules.restrict_push_users:
+            push_access_level = 30  # Developer+ (user list deferred to Phase 5)
+        elif rules.require_pull_request_review:
+            push_access_level = 0  # No one — force all changes through MRs
+        else:
+            push_access_level = 30  # Developer+
+
+        def _apply() -> None:
+            # Delete existing rule first (GitLab has no PATCH for protected branches).
+            try:
+                project.protectedbranches.delete(branch)
+            except GitlabError as exc:
+                if getattr(exc, "response_code", None) != 404:
+                    raise ProviderWriteError(
+                        f"Could not clear existing protection for '{branch}': {exc}"
+                    ) from exc
+
+            # Re-create with the requested settings.
+            try:
+                project.protectedbranches.create(
+                    {
+                        "name": branch,
+                        "push_access_level": push_access_level,
+                        "merge_access_level": 40,  # Maintainer
+                        "allow_force_push": rules.allow_force_pushes,
+                    }
+                )
+            except GitlabError as exc:
+                raise ProviderWriteError(
+                    f"GitLab error: {getattr(exc, 'error_message', None) or exc}"
+                ) from exc
+
+        await self._run(_apply)
 
 
 # ---------------------------------------------------------------------------

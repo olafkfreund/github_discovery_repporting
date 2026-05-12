@@ -139,21 +139,12 @@ class TestProviderMethodSignatures:
 
 
 class TestStubsRaiseNotImplementedError:
-    """Verify every stub raises NotImplementedError with an issue reference.
+    """Verify remaining stubs raise NotImplementedError with an issue reference.
 
-    GitHub write methods are fully implemented (issue #14) so the
-    ``test_github_stubs_raise`` parametrized group has been removed.
-    GitLab (issue #15) and Azure DevOps (issue #16) stubs remain.
+    GitHub (#14) and GitLab (#15) write methods are fully implemented and
+    have dedicated test files. Azure DevOps (#16) stubs are the only ones
+    that still raise.
     """
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("method_name", _WRITE_METHODS)
-    async def test_gitlab_stubs_raise(
-        self, method_name: str, gitlab_provider: GitLabProvider
-    ) -> None:
-        method = getattr(gitlab_provider, method_name)
-        with pytest.raises(NotImplementedError, match="issue #15"):
-            await _call_stub(method, method_name)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("method_name", _WRITE_METHODS)
