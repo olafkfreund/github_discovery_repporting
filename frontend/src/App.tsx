@@ -8,6 +8,7 @@ import ScanProfilesPage from './pages/ScanProfilesPage'
 import SettingsLayout from './pages/settings/SettingsLayout'
 import LLMProvidersPage from './pages/settings/LLMProvidersPage'
 import RemediationPolicyPage from './pages/settings/RemediationPolicyPage'
+import AgentInstructionsPage from './pages/settings/AgentInstructionsPage'
 import GlobalSettingsPage from './pages/settings/GlobalSettingsPage'
 import AgentRunsListPage from './pages/AgentRunsListPage'
 import AgentRunDetailPage from './pages/AgentRunDetailPage'
@@ -29,6 +30,7 @@ export default function App() {
             <Route index element={<Navigate to="/settings/llm-providers" replace />} />
             <Route path="llm-providers" element={<LLMProvidersPage />} />
             <Route path="remediation-policy" element={<RemediationPolicyPage />} />
+            <Route path="agent-instructions" element={<AgentInstructionsPage />} />
             <Route path="global" element={<GlobalSettingsPage />} />
           </Route>
 
