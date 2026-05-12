@@ -1135,6 +1135,103 @@ async def test_runner_respects_skill_prompt_budget(runner_factory, runner_db) ->
 
 
 @pytest.mark.asyncio
+async def test_guardrail_violation_skips_pr_and_marks_action_failed(
+    runner_factory, runner_db
+) -> None:
+    """When check_diff_scope returns a violation, no PR is opened and the
+    RemediationAction is persisted with status=failed."""
+    from backend.agents.guardrail import GuardrailViolation
+
+    scaffold = await _build_run_scaffold(runner_db)
+    run_id = scaffold["run"].id
+    finding_id = scaffold["finding"].id
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ws = _make_fake_workspace(Path(tmpdir))
+
+        with (
+            patch("backend.agents.runner_backend.open_workspace") as mock_ws,
+            patch("backend.agents.runner_backend.run_loop", new_callable=AsyncMock) as mock_loop,
+            patch("backend.agents.runner_backend.create_provider") as mock_cp,
+            patch("backend.agents.runner_backend.get_llm_provider") as mock_llm,
+            patch(
+                "backend.agents.runner_backend.check_diff_scope",
+                new_callable=AsyncMock,
+                return_value=GuardrailViolation(
+                    files_out_of_scope=["docs/README.md"],
+                    allowed_globs=["src/**"],
+                ),
+            ),
+        ):
+            mock_ws.side_effect = _make_workspace_side_effect(ws)
+            mock_loop.return_value = _success_loop_result(
+                "Done. PR opened at https://github.com/test-org/my-repo/pull/42"
+            )
+            mock_cp.return_value = MagicMock()
+            mock_llm.return_value = MagicMock()
+
+            from backend.agents.runner_backend import run_backend_agent
+
+            await run_backend_agent(agent_run_id=run_id, db_factory=runner_factory)
+
+    async with runner_factory() as check_db:
+        action_result = await check_db.execute(
+            select(RemediationAction).where(RemediationAction.agent_run_id == run_id)
+        )
+        actions = list(action_result.scalars().all())
+
+    # A RemediationAction is inserted (to record the failure) but with failed status.
+    assert len(actions) == 1
+    assert actions[0].finding_id == finding_id
+    assert actions[0].status == RemediationActionStatus.failed
+    # PR URL must NOT be set — the PR was blocked.
+    assert actions[0].pr_url is None
+
+
+@pytest.mark.asyncio
+async def test_guardrail_pass_proceeds_to_action_insert(runner_factory, runner_db) -> None:
+    """When check_diff_scope returns None (in scope), the PR proceeds normally."""
+    scaffold = await _build_run_scaffold(runner_db)
+    run_id = scaffold["run"].id
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ws = _make_fake_workspace(Path(tmpdir))
+
+        with (
+            patch("backend.agents.runner_backend.open_workspace") as mock_ws,
+            patch("backend.agents.runner_backend.run_loop", new_callable=AsyncMock) as mock_loop,
+            patch("backend.agents.runner_backend.create_provider") as mock_cp,
+            patch("backend.agents.runner_backend.get_llm_provider") as mock_llm,
+            patch(
+                "backend.agents.runner_backend.check_diff_scope",
+                new_callable=AsyncMock,
+                return_value=None,  # No violation — all good.
+            ),
+        ):
+            mock_ws.side_effect = _make_workspace_side_effect(ws)
+            mock_loop.return_value = _success_loop_result(
+                "Done. PR at https://github.com/test-org/my-repo/pull/7"
+            )
+            mock_cp.return_value = MagicMock()
+            mock_llm.return_value = MagicMock()
+
+            from backend.agents.runner_backend import run_backend_agent
+
+            await run_backend_agent(agent_run_id=run_id, db_factory=runner_factory)
+
+    async with runner_factory() as check_db:
+        action_result = await check_db.execute(
+            select(RemediationAction).where(RemediationAction.agent_run_id == run_id)
+        )
+        actions = list(action_result.scalars().all())
+
+    # The run should complete and a RemediationAction inserted (in_progress or failed
+    # depending on the success_check, but NOT blocked).
+    assert len(actions) == 1
+    assert actions[0].pr_url is not None and "pull/7" in actions[0].pr_url
+
+
+@pytest.mark.asyncio
 async def test_runner_respects_connection_override(runner_factory, runner_db) -> None:
     """Per-connection skills_override=False suppresses a built-in skill injection."""
     from backend.models.skill import SkillToggle
