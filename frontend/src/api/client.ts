@@ -43,6 +43,7 @@ import type {
   RemediationPolicy,
   RemediationPolicyUpsertPayload,
 } from '../types/agents'
+import type { GlobalSettings, GlobalSettingsUpdate } from '../types/settings'
 
 const BASE_URL = '/api'
 
@@ -343,4 +344,14 @@ export const api = {
 
   cancelAgentRun: (id: string): Promise<AgentRun> =>
     request<AgentRun>(`/agent-runs/${id}/cancel`, { method: 'POST' }),
+
+  // Global Settings
+  getGlobalSettings: (): Promise<GlobalSettings> =>
+    request<GlobalSettings>('/settings'),
+
+  updateGlobalSettings: (payload: GlobalSettingsUpdate): Promise<GlobalSettings> =>
+    request<GlobalSettings>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
 }
