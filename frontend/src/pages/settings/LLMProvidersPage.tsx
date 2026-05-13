@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSettingsCustomerId } from '../../hooks/useSettingsCustomerId'
 import { api } from '../../api/client'
 import type { LLMConnection } from '../../types/llm'
 import type { CostStatus } from '../../types/agents'
@@ -12,8 +12,7 @@ import LLMConnectionForm from '../../components/settings/LLMConnectionForm'
 import { formatDate, nextMonthStart } from '../../utils/format'
 
 export default function LLMProvidersPage() {
-  const [searchParams] = useSearchParams()
-  const customerId = searchParams.get('customer_id') ?? ''
+  const customerId = useSettingsCustomerId()
 
   const [connections, setConnections] = useState<LLMConnection[]>([])
   const [loading, setLoading] = useState(false)

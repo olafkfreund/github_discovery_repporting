@@ -1,9 +1,11 @@
 // Usage:
 //   Rendered at /settings/skills?customer_id=<uuid>
-//   Reads customer_id from URL search params (supplied by CustomerPicker in SettingsLayout)
+//   Reads customer_id via useSettingsCustomerId, which falls back to localStorage
+//   so returning visitors don't see "Select a customer" before CustomerPicker
+//   has hydrated the URL.
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSettingsCustomerId } from '../../hooks/useSettingsCustomerId'
 import { api } from '../../api/client'
 import type { Skill, SkillFilters, SkillFilterType } from '../../types/skills'
 import type { CategoryRegistryInfo, Connection } from '../../types'
@@ -140,8 +142,7 @@ function FilterRow({ filters, onChange, onNewClick, newButtonRef }: FilterRowPro
 // ---------------------------------------------------------------------------
 
 export default function SkillsPage() {
-  const [searchParams] = useSearchParams()
-  const customerId = searchParams.get('customer_id')
+  const customerId = useSettingsCustomerId() || null
 
   const { skills, loading, error, reload, toggleEnabled } = useSkills(customerId)
 

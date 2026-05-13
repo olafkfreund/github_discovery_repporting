@@ -1,5 +1,5 @@
 import { useState, useEffect, useId } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSettingsCustomerId } from '../../hooks/useSettingsCustomerId'
 import { api } from '../../api/client'
 import type { RemediationPolicy, RemediationPolicyUpsertPayload } from '../../types/agents'
 import type { CategoryRegistryInfo } from '../../types'
@@ -68,8 +68,7 @@ function SectionHeading({ id, children }: { id?: string; children: React.ReactNo
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RemediationPolicyPage() {
-  const [searchParams] = useSearchParams()
-  const customerId = searchParams.get('customer_id') ?? ''
+  const customerId = useSettingsCustomerId()
 
   const [policy, setPolicy] = useState<RemediationPolicy | null>(null)
   const [draft, setDraft] = useState<RemediationPolicyUpsertPayload>(DEFAULTS)

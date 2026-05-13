@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../api/client'
+import { SETTINGS_CUSTOMER_STORAGE_KEY as STORAGE_KEY } from '../../hooks/useSettingsCustomerId'
 import type { Customer } from '../../types'
-
-const STORAGE_KEY = 'bps:settings:selected_customer_id'
 
 export default function CustomerPicker() {
   const [customers, setCustomers] = useState<Customer[]>([])
