@@ -665,3 +665,145 @@ async def test_create_agent_run_cost_cap_not_exceeded_succeeds(
         llm_connection_id=llm.id,
     )
     assert run.status == AgentRunStatus.pending
+
+
+# ---------------------------------------------------------------------------
+# trigger_agent_run_by_mode — routing (issue #50)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_trigger_agent_run_by_mode_backend_calls_trigger_backend_run(
+    db_session: AsyncSession,
+) -> None:
+    """trigger_agent_run_by_mode routes runtime_mode='backend' to trigger_backend_run."""
+    customer = await _make_customer(db_session)
+    conn = await _make_connection(db_session, customer.id)
+    llm = await _make_llm(db_session, customer.id)
+    scan = await _make_scan(db_session, customer.id, conn.id)
+    run = await _make_agent_run(db_session, scan.id, llm.id, status=AgentRunStatus.pending)
+    run.runtime_mode = "backend"
+    await db_session.commit()
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    engine.dialect.native_uuid = False  # type: ignore[attr-defined]
+    from backend.models.base import Base
+
+    async with engine.begin() as c:
+        await c.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+
+    backend_mock = AsyncMock(return_value=asyncio.create_task(asyncio.sleep(0)))
+    ci_mock = AsyncMock()
+
+    with patch.object(svc, "trigger_backend_run", backend_mock):
+        with patch("backend.agents.runner_ci.trigger_ci_run", ci_mock):
+            task = await svc.trigger_agent_run_by_mode(run, factory)
+
+    backend_mock.assert_called_once_with(run, factory)
+    ci_mock.assert_not_called()
+    assert isinstance(task, asyncio.Task)
+
+    # Cleanup dangling task.
+    if not task.done():
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_trigger_agent_run_by_mode_ci_calls_trigger_ci_run(
+    db_session: AsyncSession,
+) -> None:
+    """trigger_agent_run_by_mode routes runtime_mode='ci' to trigger_ci_run."""
+    customer = await _make_customer(db_session)
+    conn = await _make_connection(db_session, customer.id)
+    llm = await _make_llm(db_session, customer.id)
+    scan = await _make_scan(db_session, customer.id, conn.id)
+    run = await _make_agent_run(db_session, scan.id, llm.id, status=AgentRunStatus.pending)
+    run.runtime_mode = "ci"
+    await db_session.commit()
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    engine.dialect.native_uuid = False  # type: ignore[attr-defined]
+    from backend.models.base import Base
+
+    async with engine.begin() as c:
+        await c.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+
+    expected_task = asyncio.create_task(asyncio.sleep(0))
+    ci_mock = AsyncMock(return_value=expected_task)
+    backend_mock = AsyncMock()
+
+    # The lazy import inside trigger_agent_run_by_mode does:
+    #   from backend.agents.runner_ci import trigger_ci_run
+    # Patching the module-level attribute is the correct target.
+    import backend.agents.runner_ci as _ci_mod
+
+    orig = _ci_mod.trigger_ci_run
+    _ci_mod.trigger_ci_run = ci_mock  # type: ignore[assignment]
+    try:
+        with patch.object(svc, "trigger_backend_run", backend_mock):
+            task = await svc.trigger_agent_run_by_mode(run, factory)
+    finally:
+        _ci_mod.trigger_ci_run = orig  # type: ignore[assignment]
+
+    ci_mock.assert_called_once_with(run, factory)
+    backend_mock.assert_not_called()
+
+    # Cleanup tasks.
+    if not expected_task.done():
+        expected_task.cancel()
+        try:
+            await expected_task
+        except (asyncio.CancelledError, Exception):
+            pass
+    if not task.done():
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_trigger_agent_run_by_mode_unknown_mode_raises_400(
+    db_session: AsyncSession,
+) -> None:
+    """trigger_agent_run_by_mode raises HTTPException 400 for unknown runtime_mode."""
+    from fastapi import HTTPException
+
+    customer = await _make_customer(db_session)
+    conn = await _make_connection(db_session, customer.id)
+    llm = await _make_llm(db_session, customer.id)
+    scan = await _make_scan(db_session, customer.id, conn.id)
+    run = await _make_agent_run(db_session, scan.id, llm.id, status=AgentRunStatus.pending)
+    run.runtime_mode = "docker"  # Invalid mode.
+    await db_session.commit()
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    engine.dialect.native_uuid = False  # type: ignore[attr-defined]
+    from backend.models.base import Base
+
+    async with engine.begin() as c:
+        await c.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.trigger_agent_run_by_mode(run, factory)
+
+    assert exc_info.value.status_code == 400
+    assert "docker" in exc_info.value.detail
+
+    await engine.dispose()

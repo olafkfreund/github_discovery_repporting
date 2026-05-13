@@ -213,7 +213,7 @@ async def trigger_agent_run(
         runtime_mode=payload.runtime_mode,
         check_ids=payload.check_ids,
     )
-    await agent_service.trigger_backend_run(run, AsyncSessionLocal)
+    await agent_service.trigger_agent_run_by_mode(run, AsyncSessionLocal)
     # Re-fetch with relationships to satisfy AgentRunRead (steps + actions).
     stmt = (
         select(AgentRun)

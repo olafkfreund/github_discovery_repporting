@@ -1,0 +1,83 @@
+name: BPS Agent
+# Install this file as .github/workflows/bps-agent.yml in your repository.
+# Trigger via GitHub Actions REST API:
+#   POST /repos/{owner}/{repo}/actions/workflows/bps-agent.yml/dispatches
+# with body:
+#   { "ref": "main", "inputs": { "agent_run_id": "...", "callback_url": "...",
+#     "callback_secret_hex": "...", "allowed_path_globs": "...", "denied_path_globs": "..." } }
+#
+# The BPS backend dispatches this automatically when runtime_mode='ci'.
+on:
+  workflow_dispatch:
+    inputs:
+      agent_run_id:
+        description: "BPS AgentRun UUID"
+        required: true
+        type: string
+      callback_url:
+        description: "BPS public API base URL (e.g. https://bps.example.com)"
+        required: true
+        type: string
+      callback_secret_hex:
+        description: "HMAC-SHA256 signing secret (hex-encoded)"
+        required: true
+        type: string
+      allowed_path_globs:
+        description: "Comma-separated glob patterns the agent may modify (empty = all)"
+        required: false
+        default: ""
+        type: string
+      denied_path_globs:
+        description: "Comma-separated glob patterns the agent must not modify"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  remediate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post starting event
+        env:
+          AGENT_RUN_ID: ${{ inputs.agent_run_id }}
+          CALLBACK_URL: ${{ inputs.callback_url }}
+          CALLBACK_SECRET_HEX: ${{ inputs.callback_secret_hex }}
+        run: |
+          BODY='{"step_index":0,"step_type":"observation","tool_result_redacted":"CI dispatch received","status":"ok"}'
+          SIG=$(printf "%s" "$BODY" | openssl dgst -sha256 -hmac "$(printf "%s" "$CALLBACK_SECRET_HEX" | xxd -r -p)" -binary | xxd -p -c 256)
+          curl -fsS -X POST "$CALLBACK_URL/api/agent-runs/$AGENT_RUN_ID/events" \
+            -H "Content-Type: application/json" \
+            -H "X-BPS-Signature: sha256=$SIG" \
+            -d "$BODY"
+
+      - name: Run agent (placeholder)
+        # Phase 5 will replace this step with the real bps-agent CLI invocation:
+        #   docker run --rm ghcr.io/bps/bps-agent:latest \
+        #     --run-id "${{ inputs.agent_run_id }}" \
+        #     --callback-url "${{ inputs.callback_url }}" \
+        #     --callback-secret-hex "${{ inputs.callback_secret_hex }}" \
+        #     --allowed-paths "${{ inputs.allowed_path_globs }}" \
+        #     --denied-paths "${{ inputs.denied_path_globs }}"
+        run: echo "Phase 5 will install and run the bps-agent CLI here"
+
+      - name: Post finished event
+        if: always()
+        env:
+          AGENT_RUN_ID: ${{ inputs.agent_run_id }}
+          CALLBACK_URL: ${{ inputs.callback_url }}
+          CALLBACK_SECRET_HEX: ${{ inputs.callback_secret_hex }}
+        run: |
+          JOB_STATUS="${{ job.status }}"
+          if [ "$JOB_STATUS" = "success" ]; then
+            FINAL_STATUS="succeeded"
+          elif [ "$JOB_STATUS" = "cancelled" ]; then
+            FINAL_STATUS="cancelled"
+          else
+            FINAL_STATUS="failed"
+          fi
+          BODY="{\"step_index\":1,\"step_type\":\"final\",\"tool_result_redacted\":\"CI workflow complete\",\"status\":\"$FINAL_STATUS\"}"
+          SIG=$(printf "%s" "$BODY" | openssl dgst -sha256 -hmac "$(printf "%s" "$CALLBACK_SECRET_HEX" | xxd -r -p)" -binary | xxd -p -c 256)
+          curl -fsS -X POST "$CALLBACK_URL/api/agent-runs/$AGENT_RUN_ID/events" \
+            -H "Content-Type: application/json" \
+            -H "X-BPS-Signature: sha256=$SIG" \
+            -d "$BODY"
