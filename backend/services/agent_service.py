@@ -24,7 +24,7 @@ from backend.models.enums import AgentRunStatus, ScanStatus
 from backend.models.finding import Finding
 from backend.models.llm import LLMConnection
 from backend.models.scan import Scan
-from backend.services import kill_switch_service
+from backend.services import cost_cap_service, kill_switch_service
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +107,7 @@ async def create_agent_run(
     2. Scan status is ``completed`` — :http:statuscode:`409` if not.
     3. LLMConnection exists — :http:statuscode:`404` if not.
     4. Kill switch not engaged (global or customer layer) — :http:statuscode:`403` if engaged.
+    4b. Monthly cost cap not exceeded — :http:statuscode:`409` if exceeded (issue #48).
     5. No non-terminal AgentRun already exists for this scan — :http:statuscode:`409`.
 
     On success a new row is committed in ``pending`` state.
@@ -133,8 +134,8 @@ async def create_agent_run(
         HTTPException: 404 when scan or LLM connection is not found.
         HTTPException: 403 when a kill switch is engaged at the global or
             customer layer.
-        HTTPException: 409 when the scan is not completed or a non-terminal
-            run already exists.
+        HTTPException: 409 when the scan is not completed, the monthly cost
+            cap is exceeded, or a non-terminal run already exists.
     """
     # 1. Scan exists?
     scan_result = await db.execute(select(Scan).where(Scan.id == scan_id))
@@ -172,6 +173,17 @@ async def create_agent_run(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Kill switch engaged at {ks.layer} layer; cannot create agent runs.",
+        )
+
+    # 4b. Monthly cost-cap check (issue #48).
+    cap_state = await cost_cap_service.check(db, scan.customer_id)
+    if cap_state.exceeded:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Monthly cost cap exceeded for customer: "
+                f"spent ${cap_state.spent_usd:.2f} of ${cap_state.cap_usd:.2f}."
+            ),
         )
 
     # 5. No active (non-terminal) run already exists for this scan?
