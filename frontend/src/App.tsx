@@ -13,6 +13,9 @@ import AgentInstructionsPage from './pages/settings/AgentInstructionsPage'
 import GlobalSettingsPage from './pages/settings/GlobalSettingsPage'
 import AgentRunsListPage from './pages/AgentRunsListPage'
 import AgentRunDetailPage from './pages/AgentRunDetailPage'
+import { HelpLayout } from './pages/help/HelpLayout'
+import { HelpHomePage } from './pages/help/HelpHomePage'
+import { DocPage } from './pages/help/DocPage'
 
 export default function App() {
   return (
@@ -39,6 +42,12 @@ export default function App() {
           {/* Agents Running */}
           <Route path="/agents" element={<AgentRunsListPage />} />
           <Route path="/agents/:id" element={<AgentRunDetailPage />} />
+
+          {/* Help & Docs — #56 will add skills-lib and profiles routes */}
+          <Route path="/help" element={<HelpLayout />}>
+            <Route index element={<HelpHomePage />} />
+            <Route path=":slug" element={<DocPage />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>

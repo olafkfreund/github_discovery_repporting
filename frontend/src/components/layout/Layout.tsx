@@ -8,10 +8,12 @@ const PAGE_TITLES: Record<string, string> = {
   '/settings/llm-providers': 'Settings — LLM Providers',
   '/settings/remediation-policy': 'Settings — Remediation Policy',
   '/settings/global': 'Settings — Global',
+  '/help': 'Help & Docs',
 }
 
 function getPageTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
+  if (pathname.startsWith('/help')) return 'Help & Docs'
   if (pathname.startsWith('/customers/') && pathname.endsWith('/scan-profiles')) {
     return 'Scan Profiles'
   }
