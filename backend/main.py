@@ -23,6 +23,7 @@ def _register_routers(app: FastAPI) -> None:
     from backend.routers.agent_profiles import router as agent_profiles_router
     from backend.routers.agent_runs import router as agent_runs_router
     from backend.routers.connections import router as connections_router
+    from backend.routers.cost_status import router as cost_status_router
     from backend.routers.customers import router as customers_router
     from backend.routers.dashboard import router as dashboard_router
     from backend.routers.llm_connections import router as llm_connections_router
@@ -51,6 +52,7 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(agent_runs_router)
     app.include_router(model_cards_router)
     app.include_router(settings_router)
+    app.include_router(cost_status_router)
 
 
 def _check_weasyprint() -> None:
