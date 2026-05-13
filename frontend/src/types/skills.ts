@@ -56,6 +56,21 @@ export interface SkillFilters {
 }
 
 /**
+ * Read-only summary of a built-in skill from /api/skills-registry.
+ *
+ * Customer-agnostic: contains no enabled flag and no customer/connection
+ * context. Used by the Help & Docs live Skills Library page.
+ */
+export interface SkillRegistryEntry {
+  name: string
+  description: string
+  category: string
+  applies_to: string[]
+  triggers: ('remediation' | 'scan_enrichment')[]
+  version: number
+}
+
+/**
  * Per-connection skill overrides.
  *
  * Sparse dict: skill names ABSENT from the map inherit the customer-level

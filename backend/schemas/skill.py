@@ -115,6 +115,32 @@ class SkillSummary(BaseModel):
     updated_at: datetime | None = None
 
 
+class SkillRegistryEntry(BaseModel):
+    """Read-only summary of a built-in skill from the static library.
+
+    Returned by ``GET /api/skills-registry`` for the in-app Help & Docs live
+    skills browser.  Customer-agnostic: contains no enabled/override state and
+    no customer-scoped fields.
+
+    Attributes:
+        name: URL-safe slug (matches the source file stem).
+        description: One-sentence summary from the file frontmatter.
+        category: Scanner category key or ``"general"``.
+        applies_to: List of check IDs this skill addresses; empty means always-on.
+        triggers: Contexts in which the skill body is injected.
+        version: Schema version integer.
+    """
+
+    name: str
+    description: str
+    category: str
+    applies_to: list[str]
+    triggers: list[Literal["remediation", "scan_enrichment"]]
+    version: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SkillsOverridePayload(BaseModel):
     """PUT body for ``/api/connections/{id}/skills-override``.
 

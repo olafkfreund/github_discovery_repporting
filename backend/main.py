@@ -34,6 +34,7 @@ def _register_routers(app: FastAPI) -> None:
     from backend.routers.scans import router as scans_router
     from backend.routers.settings import router as settings_router
     from backend.routers.skills import router as skills_router
+    from backend.routers.skills_registry import router as skills_registry_router
 
     app.include_router(agent_profiles_router)
     app.include_router(customers_router, prefix="/api")
@@ -47,6 +48,7 @@ def _register_routers(app: FastAPI) -> None:
     # without shadowing the /customers/ prefix routes since suffixes differ.
     app.include_router(agent_instructions_router)
     app.include_router(skills_router)
+    app.include_router(skills_registry_router)
     app.include_router(remediation_policies_router)
     # Agent runs router: includes /api/scans/{scan_id}/agent-runs and /api/agent-runs/...
     app.include_router(agent_runs_router)

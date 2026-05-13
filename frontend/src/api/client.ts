@@ -19,6 +19,7 @@ import type {
   SkillCreatePayload,
   SkillUpdatePayload,
   SkillsListResponse,
+  SkillRegistryEntry,
   ConnectionSkillsOverridePayload,
 } from '../types/skills'
 import type {
@@ -287,6 +288,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
+
+  // Skills Registry (read-only, built-in catalogue for the Help docs)
+  listSkillsRegistry: (): Promise<SkillRegistryEntry[]> =>
+    request<SkillRegistryEntry[]>('/skills-registry'),
+
+  getSkillRegistryContent: (name: string): Promise<{ name: string; body: string }> =>
+    request<{ name: string; body: string }>(
+      `/skills-registry/${encodeURIComponent(name)}/content`,
+    ),
 
   // Agent Runs
   getRemediationPolicy: async (customerId: string): Promise<RemediationPolicy | null> => {

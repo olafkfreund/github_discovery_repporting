@@ -16,6 +16,8 @@ import AgentRunDetailPage from './pages/AgentRunDetailPage'
 import { HelpLayout } from './pages/help/HelpLayout'
 import { HelpHomePage } from './pages/help/HelpHomePage'
 import { DocPage } from './pages/help/DocPage'
+import SkillsLibraryPage from './pages/help/SkillsLibraryPage'
+import AgentProfilesGalleryPage from './pages/help/AgentProfilesGalleryPage'
 
 export default function App() {
   return (
@@ -43,9 +45,11 @@ export default function App() {
           <Route path="/agents" element={<AgentRunsListPage />} />
           <Route path="/agents/:id" element={<AgentRunDetailPage />} />
 
-          {/* Help & Docs — #56 will add skills-lib and profiles routes */}
+          {/* Help & Docs — live registry routes must precede :slug */}
           <Route path="/help" element={<HelpLayout />}>
             <Route index element={<HelpHomePage />} />
+            <Route path="skills-lib" element={<SkillsLibraryPage />} />
+            <Route path="profiles" element={<AgentProfilesGalleryPage />} />
             <Route path=":slug" element={<DocPage />} />
           </Route>
         </Route>
