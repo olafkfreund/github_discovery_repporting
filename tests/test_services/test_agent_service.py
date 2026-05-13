@@ -581,3 +581,87 @@ async def test_create_agent_run_no_kill_switch_succeeds(
         llm_connection_id=llm.id,
     )
     assert run.status == AgentRunStatus.pending
+
+
+# ---------------------------------------------------------------------------
+# create_agent_run — cost cap (issue #48)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_agent_run_rejects_when_cost_cap_exceeded(
+    db_session: AsyncSession,
+) -> None:
+    """create_agent_run raises 409 when the monthly cost cap has been exceeded."""
+    import secrets as secrets_mod
+
+    from fastapi import HTTPException
+
+    from backend.models.remediation_policy import RemediationPolicy
+
+    customer = await _make_customer(db_session)
+    conn = await _make_connection(db_session, customer.id)
+    llm = await _make_llm(db_session, customer.id)
+    scan = await _make_scan(db_session, customer.id, conn.id)
+
+    # Policy with a very low cap.
+    policy = RemediationPolicy(
+        customer_id=customer.id,
+        kill_switch_enabled=False,
+        max_cost_usd_per_month=10.0,
+    )
+    db_session.add(policy)
+
+    # Seed an existing completed run that already exceeds the cap.
+    existing_run = AgentRun(
+        scan_id=scan.id,
+        llm_connection_id=llm.id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        status=AgentRunStatus.completed,
+        runtime_mode="backend",
+        callback_secret=secrets_mod.token_bytes(32),
+        total_cost_usd=12.0,
+    )
+    db_session.add(existing_run)
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.create_agent_run(
+            db_session,
+            scan_id=scan.id,
+            llm_connection_id=llm.id,
+        )
+
+    assert exc_info.value.status_code == 409
+    detail = exc_info.value.detail
+    assert "cost cap" in detail.lower() or "monthly cost cap" in detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_create_agent_run_cost_cap_not_exceeded_succeeds(
+    db_session: AsyncSession,
+) -> None:
+    """create_agent_run succeeds when spend is below the cap."""
+    from backend.models.remediation_policy import RemediationPolicy
+
+    customer = await _make_customer(db_session)
+    conn = await _make_connection(db_session, customer.id)
+    llm = await _make_llm(db_session, customer.id)
+    scan = await _make_scan(db_session, customer.id, conn.id)
+
+    # Policy with cap well above zero spend.
+    policy = RemediationPolicy(
+        customer_id=customer.id,
+        kill_switch_enabled=False,
+        max_cost_usd_per_month=100.0,
+    )
+    db_session.add(policy)
+    await db_session.commit()
+
+    run = await svc.create_agent_run(
+        db_session,
+        scan_id=scan.id,
+        llm_connection_id=llm.id,
+    )
+    assert run.status == AgentRunStatus.pending
