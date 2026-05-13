@@ -1,0 +1,75 @@
+# BPS Agent — GitLab CI template
+#
+# Include this file from .gitlab-ci.yml:
+#   include:
+#     - local: 'ci/bps-agent.yml'
+#
+# Trigger via GitLab Pipeline API:
+#   POST /api/v4/projects/:id/pipeline
+# with body:
+#   { "ref": "main", "variables": [
+#       {"key": "AGENT_RUN_ID",         "value": "..."},
+#       {"key": "CALLBACK_URL",         "value": "https://bps.example.com"},
+#       {"key": "CALLBACK_SECRET_HEX",  "value": "..."},
+#       {"key": "ALLOWED_PATH_GLOBS",   "value": "src/**,tests/**"},
+#       {"key": "DENIED_PATH_GLOBS",    "value": "secrets/**"}
+#   ]}
+#
+# The BPS backend dispatches this automatically when runtime_mode='ci'.
+# ci_workflow_repo should be set to the numeric GitLab project ID.
+
+stages:
+  - bps-agent
+
+bps_agent_remediate:
+  stage: bps-agent
+  image: alpine:latest
+  variables:
+    AGENT_RUN_ID: ""
+    CALLBACK_URL: ""
+    CALLBACK_SECRET_HEX: ""
+    ALLOWED_PATH_GLOBS: ""
+    DENIED_PATH_GLOBS: ""
+  rules:
+    - if: '$AGENT_RUN_ID != ""'
+  before_script:
+    - apk add --no-cache curl openssl xxd
+  script:
+    - |
+      # Post starting event
+      BODY='{"step_index":0,"step_type":"observation","tool_result_redacted":"CI dispatch received","status":"ok"}'
+      SIG=$(printf "%s" "$BODY" | openssl dgst -sha256 -hmac "$(printf "%s" "$CALLBACK_SECRET_HEX" | xxd -r -p)" -binary | xxd -p -c 256)
+      curl -fsS -X POST "$CALLBACK_URL/api/agent-runs/$AGENT_RUN_ID/events" \
+        -H "Content-Type: application/json" \
+        -H "X-BPS-Signature: sha256=$SIG" \
+        -d "$BODY"
+    # Phase 5 will replace this with the real bps-agent CLI invocation:
+    # - docker run --rm ghcr.io/bps/bps-agent:latest
+    #     --run-id "$AGENT_RUN_ID"
+    #     --callback-url "$CALLBACK_URL"
+    #     --callback-secret-hex "$CALLBACK_SECRET_HEX"
+    #     --allowed-paths "$ALLOWED_PATH_GLOBS"
+    #     --denied-paths "$DENIED_PATH_GLOBS"
+    - echo "Phase 5 will install and run the bps-agent CLI here"
+    - |
+      # Post finished event
+      BODY='{"step_index":1,"step_type":"final","tool_result_redacted":"CI workflow complete","status":"succeeded"}'
+      SIG=$(printf "%s" "$BODY" | openssl dgst -sha256 -hmac "$(printf "%s" "$CALLBACK_SECRET_HEX" | xxd -r -p)" -binary | xxd -p -c 256)
+      curl -fsS -X POST "$CALLBACK_URL/api/agent-runs/$AGENT_RUN_ID/events" \
+        -H "Content-Type: application/json" \
+        -H "X-BPS-Signature: sha256=$SIG" \
+        -d "$BODY"
+  after_script:
+    - |
+      # Post failed event if the job was cancelled or failed
+      if [ "$CI_JOB_STATUS" != "success" ]; then
+        apk add --no-cache curl openssl xxd 2>/dev/null || true
+        FINAL_STATUS="failed"
+        [ "$CI_JOB_STATUS" = "canceled" ] && FINAL_STATUS="cancelled"
+        BODY="{\"step_index\":2,\"step_type\":\"final\",\"tool_result_redacted\":\"CI workflow $CI_JOB_STATUS\",\"status\":\"$FINAL_STATUS\"}"
+        SIG=$(printf "%s" "$BODY" | openssl dgst -sha256 -hmac "$(printf "%s" "$CALLBACK_SECRET_HEX" | xxd -r -p)" -binary | xxd -p -c 256)
+        curl -fsS -X POST "$CALLBACK_URL/api/agent-runs/$AGENT_RUN_ID/events" \
+          -H "Content-Type: application/json" \
+          -H "X-BPS-Signature: sha256=$SIG" \
+          -d "$BODY" || true
+      fi

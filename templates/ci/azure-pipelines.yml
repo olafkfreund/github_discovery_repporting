@@ -1,0 +1,88 @@
+# BPS Agent — Azure Pipelines template
+#
+# Add this file to your repository and create a pipeline in Azure DevOps
+# pointing to it. The pipeline is triggered via the Azure Pipelines REST API:
+#   POST {org}/{project}/_apis/pipelines/{pipelineId}/runs?api-version=7.0
+# with body:
+#   {
+#     "resources": {"repositories": {"self": {"refName": "refs/heads/main"}}},
+#     "variables": {
+#       "AGENT_RUN_ID":        {"value": "..."},
+#       "CALLBACK_URL":        {"value": "https://bps.example.com"},
+#       "CALLBACK_SECRET_HEX": {"value": "..."},
+#       "ALLOWED_PATH_GLOBS":  {"value": "src/**,tests/**"},
+#       "DENIED_PATH_GLOBS":   {"value": "secrets/**"}
+#     }
+#   }
+#
+# The BPS backend dispatches this automatically when runtime_mode='ci'.
+# ci_workflow_repo should be set to "ProjectName:pipelineId" (e.g. "MyProject:42").
+
+parameters:
+  - name: agent_run_id
+    type: string
+    default: ""
+  - name: callback_url
+    type: string
+    default: ""
+  - name: callback_secret_hex
+    type: string
+    default: ""
+  - name: allowed_path_globs
+    type: string
+    default: ""
+  - name: denied_path_globs
+    type: string
+    default: ""
+
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - script: |
+      sudo apt-get update -qq && sudo apt-get install -y -qq curl xxd
+      BODY='{"step_index":0,"step_type":"observation","tool_result_redacted":"CI dispatch received","status":"ok"}'
+      SIG=$(printf "%s" "$BODY" | openssl dgst -sha256 -hmac "$(printf "%s" "$(CALLBACK_SECRET_HEX)" | xxd -r -p)" -binary | xxd -p -c 256)
+      curl -fsS -X POST "$(CALLBACK_URL)/api/agent-runs/$(AGENT_RUN_ID)/events" \
+        -H "Content-Type: application/json" \
+        -H "X-BPS-Signature: sha256=$SIG" \
+        -d "$BODY"
+    displayName: Post starting event
+    env:
+      AGENT_RUN_ID: ${{ parameters.agent_run_id }}
+      CALLBACK_URL: ${{ parameters.callback_url }}
+      CALLBACK_SECRET_HEX: ${{ parameters.callback_secret_hex }}
+
+  - script: |
+      # Phase 5 will replace this with the real bps-agent CLI invocation:
+      # docker run --rm ghcr.io/bps/bps-agent:latest \
+      #   --run-id "$(AGENT_RUN_ID)" \
+      #   --callback-url "$(CALLBACK_URL)" \
+      #   --callback-secret-hex "$(CALLBACK_SECRET_HEX)" \
+      #   --allowed-paths "$(ALLOWED_PATH_GLOBS)" \
+      #   --denied-paths "$(DENIED_PATH_GLOBS)"
+      echo "Phase 5 will install and run the bps-agent CLI here"
+    displayName: Run agent (placeholder)
+    env:
+      AGENT_RUN_ID: ${{ parameters.agent_run_id }}
+      CALLBACK_URL: ${{ parameters.callback_url }}
+      CALLBACK_SECRET_HEX: ${{ parameters.callback_secret_hex }}
+      ALLOWED_PATH_GLOBS: ${{ parameters.allowed_path_globs }}
+      DENIED_PATH_GLOBS: ${{ parameters.denied_path_globs }}
+
+  - script: |
+      sudo apt-get install -y -qq curl xxd 2>/dev/null || true
+      BODY='{"step_index":1,"step_type":"final","tool_result_redacted":"CI workflow complete","status":"succeeded"}'
+      SIG=$(printf "%s" "$BODY" | openssl dgst -sha256 -hmac "$(printf "%s" "$(CALLBACK_SECRET_HEX)" | xxd -r -p)" -binary | xxd -p -c 256)
+      curl -fsS -X POST "$(CALLBACK_URL)/api/agent-runs/$(AGENT_RUN_ID)/events" \
+        -H "Content-Type: application/json" \
+        -H "X-BPS-Signature: sha256=$SIG" \
+        -d "$BODY"
+    displayName: Post finished event
+    condition: always()
+    env:
+      AGENT_RUN_ID: ${{ parameters.agent_run_id }}
+      CALLBACK_URL: ${{ parameters.callback_url }}
+      CALLBACK_SECRET_HEX: ${{ parameters.callback_secret_hex }}

@@ -245,6 +245,41 @@ async def create_agent_run(
     return run
 
 
+async def trigger_agent_run_by_mode(
+    agent_run: AgentRun,
+    db_factory: async_sessionmaker,
+) -> asyncio.Task:
+    """Route an AgentRun to the appropriate runner based on its runtime_mode.
+
+    Dispatches to :func:`trigger_backend_run` when ``runtime_mode='backend'``
+    or to the CI dispatcher when ``runtime_mode='ci'``.  Raises
+    :class:`fastapi.HTTPException` (400) for any unknown mode.
+
+    Args:
+        agent_run: The :class:`~backend.models.agent_runs.AgentRun` row in
+            ``pending`` state to schedule.
+        db_factory: The application-wide async session factory, forwarded to
+            the runner.
+
+    Returns:
+        The :class:`asyncio.Task` wrapping the runner coroutine.
+
+    Raises:
+        HTTPException: 400 for an unknown ``runtime_mode`` value.
+    """
+    mode = agent_run.runtime_mode
+    if mode == "backend":
+        return await trigger_backend_run(agent_run, db_factory)
+    if mode == "ci":
+        from backend.agents.runner_ci import trigger_ci_run  # noqa: PLC0415
+
+        return await trigger_ci_run(agent_run, db_factory)
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unknown runtime_mode {mode!r}. Supported modes: 'backend', 'ci'.",
+    )
+
+
 async def trigger_backend_run(
     agent_run: AgentRun,
     db_factory: async_sessionmaker,

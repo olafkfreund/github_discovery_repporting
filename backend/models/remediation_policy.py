@@ -90,6 +90,10 @@ class RemediationPolicy(UUIDMixin, TimestampMixin, Base):
     llm_input_scope: Mapped[str] = mapped_column(
         String(16), nullable=False, default="hunk", server_default="'hunk'"
     )
+    ci_workflow_repo: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ci_workflow_ref: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="main", server_default="'main'"
+    )
 
     # Relationships
     customer: Mapped[Customer] = relationship(

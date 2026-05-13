@@ -93,6 +93,19 @@ class RemediationPolicyBase(BaseModel):
             "(repo-level context window)."
         ),
     )
+    ci_workflow_repo: str | None = Field(
+        default=None,
+        description=(
+            "CI workflow repo identifier. For GitHub: 'owner/repo'. "
+            "For GitLab: 'project_id' (numeric string). "
+            "For Azure DevOps: 'project_name'. "
+            "When null, CI mode is unconfigured and trigger_ci_run will fail fast."
+        ),
+    )
+    ci_workflow_ref: str = Field(
+        default="main",
+        description="Branch/ref to dispatch the CI workflow on (default 'main').",
+    )
 
 
 class RemediationPolicyUpsert(RemediationPolicyBase):
