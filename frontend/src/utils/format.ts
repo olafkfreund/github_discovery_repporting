@@ -1,9 +1,10 @@
 // Usage:
-//   import { formatDate, formatRelative, formatDuration } from '../utils/format'
+//   import { formatDate, formatRelative, formatDuration, nextMonthStart } from '../utils/format'
 //   formatDate(scan.started_at)             // => "3/4/2026, 14:05:00" or "—" for null
 //   formatDate(scan.started_at, 'date')     // => "3/4/2026" (date only)
 //   formatRelative(run.started_at)          // => "2m ago" | "just now" | "3d ago"
 //   formatDuration(run.started_at, run.finished_at)  // => "02:14" | "1h30m" | "2d 3h"
+//   nextMonthStart('2026-05-01T00:00:00Z')  // => "2026-06-01T00:00:00.000Z"
 
 /**
  * Format an ISO date string using the browser locale.
@@ -38,6 +39,20 @@ export function formatRelative(dateStr: string | null | undefined): string {
   const days = Math.floor(hours / 24)
   if (days < 30) return `${days}d ago`
   return d.toLocaleDateString()
+}
+
+/**
+ * Return the ISO-8601 string for the first day of the month following the given date.
+ * Uses UTC to avoid timezone-dependent offsets.
+ *
+ * Example: nextMonthStart('2026-05-01T00:00:00Z') => '2026-06-01T00:00:00.000Z'
+ */
+export function nextMonthStart(isoDate: string): string {
+  const d = new Date(isoDate)
+  d.setUTCMonth(d.getUTCMonth() + 1)
+  d.setUTCDate(1)
+  d.setUTCHours(0, 0, 0, 0)
+  return d.toISOString()
 }
 
 /**

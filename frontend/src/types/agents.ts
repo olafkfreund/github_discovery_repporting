@@ -121,3 +121,12 @@ export interface AgentRunTriggerPayload {
   runtime_mode: 'backend' | 'ci'
   check_ids?: string[]
 }
+
+export interface CostStatus {
+  customer_id: string
+  month_start: string       // ISO-8601 date of the current billing month start
+  spent_usd: number
+  cap_usd: number
+  remaining_usd: number
+  exceeded: boolean
+}

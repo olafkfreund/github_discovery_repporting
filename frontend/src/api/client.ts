@@ -43,6 +43,7 @@ import type {
   AgentRunTriggerPayload,
   RemediationPolicy,
   RemediationPolicyUpsertPayload,
+  CostStatus,
 } from '../types/agents'
 import type { GlobalSettings, GlobalSettingsUpdate } from '../types/settings'
 
@@ -364,4 +365,8 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
+
+  // Cost status
+  getCostStatus: (customerId: string): Promise<CostStatus> =>
+    request<CostStatus>(`/customers/${customerId}/cost-status`),
 }
