@@ -1,5 +1,5 @@
 import { useState, useEffect, useId } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSettingsCustomerId } from '../../hooks/useSettingsCustomerId'
 import { api } from '../../api/client'
 import type { AgentInstructions, AgentProfile } from '../../types/agentInstructions'
 import type { Connection, ConnectionUpdatePayload } from '../../types'
@@ -36,8 +36,7 @@ function draftsEqual(a: Draft, b: Draft): boolean {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AgentInstructionsPage() {
-  const [searchParams] = useSearchParams()
-  const customerId = searchParams.get('customer_id') ?? ''
+  const customerId = useSettingsCustomerId()
 
   const [instructions, setInstructions] = useState<AgentInstructions | null>(null)
   const [draft, setDraft] = useState<Draft>({ content: '', enabled: true })
