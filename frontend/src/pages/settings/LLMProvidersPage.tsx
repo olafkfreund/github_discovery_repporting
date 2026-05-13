@@ -2,11 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import type { LLMConnection } from '../../types/llm'
+import type { CostStatus } from '../../types/agents'
 import { Spinner } from '../../components/ui/Spinner'
 import { ErrorPanel } from '../../components/ui/ErrorPanel'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { SpendProgressBar } from '../../components/ui/SpendProgressBar'
 import LLMConnectionTable from '../../components/settings/LLMConnectionTable'
 import LLMConnectionForm from '../../components/settings/LLMConnectionForm'
+import { formatDate, nextMonthStart } from '../../utils/format'
 
 export default function LLMProvidersPage() {
   const [searchParams] = useSearchParams()
@@ -15,6 +18,8 @@ export default function LLMProvidersPage() {
   const [connections, setConnections] = useState<LLMConnection[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [costStatus, setCostStatus] = useState<CostStatus | null>(null)
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<LLMConnection | null>(null)
@@ -29,8 +34,12 @@ export default function LLMProvidersPage() {
     setLoading(true)
     setError(null)
     try {
-      const data = await api.listLLMConnections(id)
+      const [data, status] = await Promise.all([
+        api.listLLMConnections(id),
+        api.getCostStatus(id).catch(() => null),
+      ])
       setConnections(data)
+      setCostStatus(status)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load LLM providers')
     } finally {
@@ -41,15 +50,22 @@ export default function LLMProvidersPage() {
   useEffect(() => {
     if (!customerId) {
       setConnections([])
+      setCostStatus(null)
       return
     }
     let cancelled = false
     setLoading(true)
     setError(null)
-    api
-      .listLLMConnections(customerId)
-      .then((data) => {
-        if (!cancelled) setConnections(data)
+
+    Promise.all([
+      api.listLLMConnections(customerId),
+      api.getCostStatus(customerId).catch(() => null),
+    ])
+      .then(([data, status]) => {
+        if (!cancelled) {
+          setConnections(data)
+          setCostStatus(status)
+        }
       })
       .catch((err) => {
         if (!cancelled)
@@ -93,6 +109,10 @@ export default function LLMProvidersPage() {
     })
     setIsDrawerOpen(false)
     setEditingConnection(null)
+    // Refresh spend after save to reflect any policy changes
+    if (customerId) {
+      api.getCostStatus(customerId).then(setCostStatus).catch(() => null)
+    }
     // Return focus to add button
     setTimeout(() => addButtonRef.current?.focus(), 100)
   }
@@ -134,6 +154,16 @@ export default function LLMProvidersPage() {
     )
   }
 
+  const capPct =
+    costStatus && costStatus.cap_usd > 0
+      ? Math.round(Math.min(1, costStatus.spent_usd / costStatus.cap_usd) * 100)
+      : 0
+
+  const resetDateLabel =
+    costStatus
+      ? formatDate(nextMonthStart(costStatus.month_start), 'date')
+      : '—'
+
   return (
     <div className="p-6">
       {/* Page header */}
@@ -147,7 +177,9 @@ export default function LLMProvidersPage() {
         <button
           ref={addButtonRef}
           onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+          className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700
+                     text-white text-sm font-medium rounded-md
+                     focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -155,6 +187,39 @@ export default function LLMProvidersPage() {
           Add provider
         </button>
       </div>
+
+      {/* Monthly spend section */}
+      {costStatus === null ? null : (
+        <div className="mb-6 p-4 bg-white border border-gray-200 rounded-lg">
+          {costStatus.cap_usd === 0 ? (
+            <p className="text-sm text-gray-500 italic">No cap configured.</p>
+          ) : (
+            <>
+              <p className="text-sm mb-1.5">
+                Monthly spend:{' '}
+                <span className="font-medium text-gray-900">
+                  ${costStatus.spent_usd.toFixed(2)}
+                </span>
+                {' '}of{' '}
+                <span className="font-medium text-gray-900">
+                  ${costStatus.cap_usd.toFixed(2)}
+                </span>
+                {' '}
+                <span className="text-gray-500">({capPct}%)</span>
+              </p>
+              <SpendProgressBar
+                spent={costStatus.spent_usd}
+                cap={costStatus.cap_usd}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                ${costStatus.remaining_usd.toFixed(2)} remaining
+                {' · '}
+                resets on {resetDateLabel}
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Content */}
       {loading ? (
@@ -182,7 +247,9 @@ export default function LLMProvidersPage() {
           </p>
           <button
             onClick={openAdd}
-            className="mt-4 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+            className="mt-4 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm
+                       font-medium rounded-md
+                       focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
           >
             Add provider
           </button>

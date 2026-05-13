@@ -16,12 +16,14 @@ import { useState, useEffect } from 'react'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Spinner } from '../ui/Spinner'
 import { ErrorPanel } from '../ui/ErrorPanel'
+import { SpendProgressBar } from '../ui/SpendProgressBar'
 import { api } from '../../api/client'
 import type { LLMConnection } from '../../types/llm'
 import type {
   RemediationPolicy,
   AgentRunCostEstimate,
   AgentRunTriggerPayload,
+  CostStatus,
 } from '../../types/agents'
 
 interface Props {
@@ -36,6 +38,7 @@ interface LoadedData {
   connections: LLMConnection[]
   policy: RemediationPolicy | null
   estimate: AgentRunCostEstimate
+  costStatus: CostStatus | null
 }
 
 type LoadState =
@@ -69,15 +72,22 @@ export function TriggerAgentRunDialog({
     const connectionsPromise = api.listLLMConnections(customerId)
     const policyPromise = api.getRemediationPolicy(customerId)
     const estimatePromise = api.estimateAgentRunCost(scanId)
+    const costStatusPromise = api.getCostStatus(customerId)
 
     let connectionsError: string | null = null
     let estimateError: string | null = null
     let connections: LLMConnection[] = []
     let policy: RemediationPolicy | null = null
     let estimate: AgentRunCostEstimate | null = null
+    let costStatus: CostStatus | null = null
 
-    Promise.allSettled([connectionsPromise, policyPromise, estimatePromise]).then(
-      ([connectionsResult, policyResult, estimateResult]) => {
+    Promise.allSettled([
+      connectionsPromise,
+      policyPromise,
+      estimatePromise,
+      costStatusPromise,
+    ]).then(
+      ([connectionsResult, policyResult, estimateResult, costStatusResult]) => {
         if (connectionsResult.status === 'fulfilled') {
           connections = connectionsResult.value
         } else {
@@ -99,6 +109,11 @@ export function TriggerAgentRunDialog({
             : 'Failed to load cost estimate'
         }
 
+        // costStatus rejection is non-fatal — treated as null (cap section will be hidden)
+        if (costStatusResult.status === 'fulfilled') {
+          costStatus = costStatusResult.value
+        }
+
         if (connectionsError || estimateError) {
           setLoadState({ phase: 'error', connectionsError, estimateError })
           if (connections.length > 0) {
@@ -111,6 +126,7 @@ export function TriggerAgentRunDialog({
               data: {
                 connections,
                 policy,
+                costStatus,
                 estimate: estimate ?? { min_usd: 0, max_usd: 0, expected_tokens: 0 },
               },
             })
@@ -125,6 +141,7 @@ export function TriggerAgentRunDialog({
             data: {
               connections,
               policy,
+              costStatus,
               estimate: estimate!,
             },
           })
@@ -143,10 +160,15 @@ export function TriggerAgentRunDialog({
     }
   }
 
+  const capExceeded =
+    loadState.phase === 'ready' &&
+    loadState.data.costStatus?.exceeded === true
+
   const isConfirmDisabled =
     loadState.phase === 'loading' ||
     isTriggering ||
     !selectedConnectionId ||
+    capExceeded ||
     (loadState.phase === 'ready' && loadState.data.connections.length === 0) ||
     (loadState.phase === 'error' && loadState.connectionsError !== null)
 
@@ -208,7 +230,18 @@ function DialogBody({
     return null
   }
 
-  const { connections, policy, estimate } = loadState.data
+  const { connections, policy, estimate, costStatus } = loadState.data
+
+  const capPct =
+    costStatus && costStatus.cap_usd > 0
+      ? Math.round(Math.min(1, costStatus.spent_usd / costStatus.cap_usd) * 100)
+      : 0
+
+  const showCapWarning =
+    costStatus &&
+    !costStatus.exceeded &&
+    costStatus.cap_usd > 0 &&
+    costStatus.remaining_usd < estimate.max_usd
 
   return (
     <div className="space-y-4 text-sm">
@@ -284,6 +317,62 @@ function DialogBody({
           </span>
         </p>
       </div>
+
+      {/* Cost cap section */}
+      {costStatus && (
+        <div className="mt-4 text-sm">
+          {costStatus.exceeded ? (
+            <div
+              role="alert"
+              className="bg-red-50 border border-red-200 rounded-md p-3 text-sm"
+            >
+              <p className="text-red-700 font-medium">
+                Monthly cost cap exceeded
+              </p>
+              <p className="text-red-600 text-xs mt-0.5">
+                ${costStatus.spent_usd.toFixed(2)} of ${costStatus.cap_usd.toFixed(2)} spent.
+                Cannot trigger new agent runs this month.
+              </p>
+            </div>
+          ) : costStatus.cap_usd === 0 ? (
+            <p className="text-xs text-gray-500 italic">No cost cap configured.</p>
+          ) : (
+            <>
+              <p className="text-xs font-medium text-gray-700 mb-1">
+                Monthly cost cap
+              </p>
+              <p className="text-xs text-gray-600 mb-1.5">
+                <span className="font-medium text-gray-900">
+                  ${costStatus.spent_usd.toFixed(2)}
+                </span>
+                {' '}spent of{' '}
+                <span className="font-medium text-gray-900">
+                  ${costStatus.cap_usd.toFixed(2)}
+                </span>
+                {' '}
+                <span className="text-gray-500">({capPct}%)</span>
+              </p>
+              <SpendProgressBar
+                spent={costStatus.spent_usd}
+                cap={costStatus.cap_usd}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                ${costStatus.remaining_usd.toFixed(2)} remaining
+              </p>
+              {showCapWarning && (
+                <p
+                  role="status"
+                  className="text-amber-700 text-xs mt-1.5"
+                >
+                  Warning: estimated max cost (${estimate.max_usd.toFixed(4)}) exceeds
+                  remaining cap (${costStatus.remaining_usd.toFixed(2)}).
+                  This run may be rejected if it overshoots.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Runtime mode */}
       <fieldset>
