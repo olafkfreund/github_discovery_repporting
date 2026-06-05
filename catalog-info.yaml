@@ -7,6 +7,7 @@ metadata:
   name: github_discovery_repporting
   description: "A github discovery using API and comparing this to GH best practises and DevOps practises."
   annotations:
+    backstage.io/techdocs-ref: dir:.
     github.com/project-slug: olafkfreund/github_discovery_repporting
   tags: []
 spec:
